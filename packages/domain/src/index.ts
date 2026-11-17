@@ -28,6 +28,11 @@ import {
   ProviderProfile
 } from "@yardmatch/contracts";
 
+import { LAWN_SIZE_BANDS } from "./propertySizeBands";
+
+export * from "./propertySizeBands";
+export * from "./finderFee";
+
 export type DirectContactDetailKind =
   | "phone-number"
   | "email-address"
@@ -1012,12 +1017,10 @@ export class InstantQuoteEngine {
         prompt: "About how much grass needs service?",
         inputType: "single-select" as const,
         helperText: "We only ask this when the automated estimate is uncertain.",
-        options: [
-          { label: "Under 2,000 sq ft", value: "1800" },
-          { label: "2,000 to 5,000 sq ft", value: "3500" },
-          { label: "5,000 to 9,000 sq ft", value: "7000" },
-          { label: "Over 9,000 sq ft", value: "11000" }
-        ]
+        options: LAWN_SIZE_BANDS.map((band) => ({
+          label: band.label,
+          value: String(band.representativeSqFt)
+        }))
       },
       {
         id: "shrub_sq_ft",
@@ -1276,6 +1279,12 @@ export interface MarketplaceEconomicsPolicy {
   crewResponsibility: "provider";
 }
 
+/**
+ * Applies to settlements recorded through YardMatch-collected payments, which are behind
+ * a disabled launch flag. New customer relationships at launch are billed under
+ * `ACTIVE_FINDER_FEE_ECONOMICS_POLICY` instead; this policy is kept so existing and
+ * flag-enabled settlement records keep computing exactly as they were recorded.
+ */
 export const ACTIVE_MARKETPLACE_ECONOMICS_POLICY: MarketplaceEconomicsPolicy = Object.freeze({
   version: YARDMATCH_ECONOMICS_POLICY_VERSION,
   finderFeeCents: 3_000,
@@ -1284,6 +1293,21 @@ export const ACTIVE_MARKETPLACE_ECONOMICS_POLICY: MarketplaceEconomicsPolicy = O
   processorCostBearer: "platform",
   crewResponsibility: "provider"
 });
+
+const SETTLEMENT_ECONOMICS_POLICIES: Readonly<Record<string, MarketplaceEconomicsPolicy>> = Object.freeze({
+  [YARDMATCH_ECONOMICS_POLICY_VERSION]: ACTIVE_MARKETPLACE_ECONOMICS_POLICY
+});
+
+/** Looks up the policy a stored settlement was recorded under, so history never re-prices. */
+export function getSettlementEconomicsPolicy(version: string): MarketplaceEconomicsPolicy {
+  const policy = Object.hasOwn(SETTLEMENT_ECONOMICS_POLICIES, version)
+    ? SETTLEMENT_ECONOMICS_POLICIES[version]
+    : undefined;
+  if (!policy) {
+    throw new Error(`Unknown settlement economics policy version: ${version}`);
+  }
+  return policy;
+}
 
 export interface MarketplaceSettlementInput {
   customerChargeCents: number;

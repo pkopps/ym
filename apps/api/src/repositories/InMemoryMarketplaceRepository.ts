@@ -1,4 +1,5 @@
-import type { ZipServiceMinimumRecord } from "@yardmatch/contracts";
+import type { FinderFeeChargeRecord, ProviderBillingAccountRecord, ZipServiceMinimumRecord } from "@yardmatch/contracts";
+import { FinderFeeRelationshipConflictError, findFinderFeeUniqueConflict, matchesFinderFeeQuery, type FinderFeeChargeQuery } from "./finderFeeRecords";
 import { summarizeNotificationHealth } from "./notificationHealth";
 import { buildProviderClientProperties } from "../services/providerClients";
 import { searchBounds, bookingMetrics, type ProviderSearchQuery } from "./searchQueries";
@@ -46,7 +47,10 @@ import {
   BookingPageQuery,
   CompleteProviderTransferInput,
   CompleteProviderTransferReversalInput,
-  MarketplaceRepository
+  MarketplaceRepository,
+  CompletedBookingAreaSummary,
+  OpsOverviewBookingSummary,
+  UpcomingBookingsQuery
 } from "./MarketplaceRepository";
 
 import type { CustomerReferralRecord } from "./customerReferrals";
@@ -59,6 +63,47 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
   public async saveZipServiceMinimum(record: ZipServiceMinimumRecord): Promise<ZipServiceMinimumRecord> {
     this.zipServiceMinimums.set(`${record.postalCode}:${record.category}`, structuredClone(record));
     return structuredClone(record);
+  }
+
+  private readonly providerBillingAccounts = new Map<string, ProviderBillingAccountRecord>();
+  private readonly finderFeeCharges: FinderFeeChargeRecord[] = [];
+
+  public async findProviderBillingAccount(providerId: string): Promise<ProviderBillingAccountRecord | undefined> {
+    const account = this.providerBillingAccounts.get(providerId);
+    return account ? structuredClone(account) : undefined;
+  }
+  public async upsertProviderBillingAccount(account: ProviderBillingAccountRecord): Promise<ProviderBillingAccountRecord> {
+    const existing = this.providerBillingAccounts.get(account.providerId);
+    const saved = { ...account, createdAt: existing?.createdAt ?? account.createdAt };
+    this.providerBillingAccounts.set(account.providerId, structuredClone(saved));
+    return structuredClone(saved);
+  }
+  public async findFinderFeeChargeById(chargeId: string): Promise<FinderFeeChargeRecord | undefined> {
+    const record = this.finderFeeCharges.find(row => row.id === chargeId);
+    return record ? structuredClone(record) : undefined;
+  }
+  public async findFinderFeeChargeByRelationship(customerId: string, providerId: string): Promise<FinderFeeChargeRecord | undefined> {
+    const record = this.finderFeeCharges.find(row => row.customerId === customerId && row.providerId === providerId);
+    return record ? structuredClone(record) : undefined;
+  }
+  public async createFinderFeeCharge(record: FinderFeeChargeRecord): Promise<FinderFeeChargeRecord> {
+    // Mirrors the Postgres unique constraints; no await between the check and the insert.
+    const conflict = findFinderFeeUniqueConflict(this.finderFeeCharges, record);
+    if (conflict) throw new FinderFeeRelationshipConflictError(`Finder-fee ${conflict} is already recorded.`);
+    this.finderFeeCharges.push(structuredClone(record));
+    return structuredClone(record);
+  }
+  public async updateFinderFeeCharge(chargeId: string, updates: Partial<FinderFeeChargeRecord>): Promise<FinderFeeChargeRecord | undefined> {
+    const index = this.finderFeeCharges.findIndex(row => row.id === chargeId);
+    if (index < 0) return undefined;
+    const next = { ...this.finderFeeCharges[index], ...structuredClone(updates), id: chargeId };
+    const conflict = findFinderFeeUniqueConflict(this.finderFeeCharges, next);
+    if (conflict) throw new FinderFeeRelationshipConflictError(`Finder-fee ${conflict} is already recorded.`);
+    this.finderFeeCharges[index] = next;
+    return structuredClone(next);
+  }
+  public async listFinderFeeCharges(query: FinderFeeChargeQuery): Promise<FinderFeeChargeRecord[]> {
+    return structuredClone(this.finderFeeCharges.filter(row => matchesFinderFeeQuery(row, query)));
   }
 
   private readonly customerReferrals: CustomerReferralRecord[] = [];
@@ -102,6 +147,16 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
       release();
       if (this.locks.get(key) === current) this.locks.delete(key);
     }
+  }
+
+  public async tryWithLock<T>(
+    key: string,
+    work: (repository: MarketplaceRepository) => Promise<T>
+  ): Promise<{ acquired: true; value: T } | { acquired: false }> {
+    if (this.locks.has(key)) {
+      return { acquired: false };
+    }
+    return { acquired: true, value: await this.withLock(key, work) };
   }
 
   public async getSecurityState(key: string): Promise<Record<string, unknown> | undefined> {
@@ -208,11 +263,11 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
       .sort((a, b) => a.startIso.localeCompare(b.startIso) || a.id.localeCompare(b.id)).slice(0, 3));
   }
 
-  public async listScopedBookings(query: { providerId?: string; customerId?: string; endAfter?: string; excludeStatuses?: string[] }) {
+  public async listScopedBookings(query: { providerId?: string; customerId?: string; endAfter?: string; statuses?: string[]; excludeStatuses?: string[] }) {
     if (!query.providerId && !query.customerId) throw new Error("Booking queries require an owner scope");
     return this.bookings.filter(row => (!query.providerId || row.providerId === query.providerId) &&
       (!query.customerId || row.customerId === query.customerId) && (!query.endAfter || Date.parse(row.scheduledEndIso) > Date.parse(query.endAfter)) &&
-      !query.excludeStatuses?.includes(row.status)).map(row => ({ ...row }));
+      (!query.statuses || query.statuses.includes(row.status)) && !query.excludeStatuses?.includes(row.status)).map(row => ({ ...row }));
   }
 
   public async getRetentionEvidence(bookingIds: string[]) {
@@ -227,6 +282,17 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
 
   public async listProviders(): Promise<ProviderProfile[]> {
     return [...this.providers];
+  }
+
+  public async listProvidersByVerificationStatus(status: ProviderProfile["verificationStatus"]): Promise<ProviderProfile[]> {
+    return this.providers
+      .filter((provider) => provider.verificationStatus === status)
+      .sort((left, right) => left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id));
+  }
+
+  public async listProvidersByIds(providerIds: string[]): Promise<ProviderProfile[]> {
+    const requestedIds = new Set(providerIds);
+    return this.providers.filter((provider) => requestedIds.has(provider.id));
   }
 
   public async listCustomers(customerIds?: string[]): Promise<CustomerProfile[]> {
@@ -367,9 +433,124 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
     };
   }
 
+  public async listUpcomingBookings(query: UpcomingBookingsQuery): Promise<Booking[]> {
+    const after = new Date(query.afterIso).getTime();
+    return this.bookings.filter(
+      (booking) =>
+        new Date(booking.scheduledStartIso).getTime() > after &&
+        query.statuses.includes(booking.status) &&
+        (!query.providerId || booking.providerId === query.providerId)
+    );
+  }
+
+  public async listBookingsForCrewStaffing(query: { providerId: string; endAfterIso: string }): Promise<Booking[]> {
+    const endAfter = new Date(query.endAfterIso).getTime();
+    return this.bookings.filter(
+      (booking) => booking.providerId === query.providerId || new Date(booking.scheduledEndIso).getTime() > endAfter
+    );
+  }
+
+  public async summarizeCompletedBookingsByArea(recentSinceIso: string): Promise<CompletedBookingAreaSummary[]> {
+    const recentSince = new Date(recentSinceIso).getTime();
+    const groups = new Map<string, CompletedBookingAreaSummary>();
+    for (const booking of this.bookings) {
+      if (booking.status !== "completed") {
+        continue;
+      }
+      const key = JSON.stringify([booking.providerId, booking.serviceAddress.city, booking.serviceAddress.state, booking.category]);
+      const group = groups.get(key) ?? {
+        providerId: booking.providerId,
+        city: booking.serviceAddress.city,
+        state: booking.serviceAddress.state,
+        category: booking.category,
+        completedBookingCount: 0,
+        recentCompletedBookingCount: 0,
+        firstScheduledStartIso: booking.scheduledStartIso
+      };
+      group.completedBookingCount += 1;
+      if (new Date(booking.completedAt ?? booking.scheduledEndIso).getTime() >= recentSince) {
+        group.recentCompletedBookingCount += 1;
+      }
+      groups.set(key, group);
+    }
+    return [...groups.values()];
+  }
+
+  public async listCompletedBookingsWithMarketingPhotos(): Promise<Booking[]> {
+    return this.bookings.filter(
+      (booking) =>
+        booking.status === "completed" &&
+        Boolean(booking.completedAt) &&
+        booking.serviceEvidence.some((evidence) => evidence.marketingUseStatus === "granted")
+    );
+  }
+
+  public async listBookingsForRecurringPlan(recurringPlanId: string): Promise<Booking[]> {
+    return this.bookings.filter((booking) => booking.recurringPlanId === recurringPlanId);
+  }
+
+  public async listBookingsForProviders(providerIds: string[]): Promise<Booking[]> {
+    const requestedIds = new Set(providerIds);
+    return this.bookings.filter((booking) => requestedIds.has(booking.providerId));
+  }
+
+  public async listBookingsByStatuses(statuses: Booking["status"][]): Promise<Booking[]> {
+    return this.bookings.filter((booking) => statuses.includes(booking.status));
+  }
+
+  public async listBookingsForCustomersOrLaunchLeads(query: { customerIds: string[]; launchLeadIds: string[] }): Promise<Booking[]> {
+    const customerIds = new Set(query.customerIds);
+    const launchLeadIds = new Set(query.launchLeadIds);
+    return this.bookings.filter((booking) => customerIds.has(booking.customerId) || (booking.launchLeadId !== undefined && launchLeadIds.has(booking.launchLeadId)));
+  }
+
+  public async summarizeBookingsWithoutPayments(): Promise<{ completedTotalCents: number; disputedAfterCompletionCount: number }> {
+    const paidBookingIds = new Set(this.payments.map((payment) => payment.bookingId));
+    const unpaid = this.bookings.filter((booking) => !paidBookingIds.has(booking.id));
+    return {
+      completedTotalCents: unpaid.filter((booking) => booking.status === "completed").reduce((sum, booking) => sum + booking.totalCents, 0),
+      disputedAfterCompletionCount: unpaid.filter((booking) => booking.status === "disputed" && Boolean(booking.completedAt)).length
+    };
+  }
+
+  public async countBookings(): Promise<number> {
+    return this.bookings.length;
+  }
+
+  public async summarizeBookingsForOpsOverview(requestedSinceIso: string): Promise<OpsOverviewBookingSummary> {
+    const requestedSince = new Date(requestedSinceIso).getTime();
+    const pockets = new Map<string, OpsOverviewBookingSummary["pockets"][number]>();
+    for (const booking of this.bookings) {
+      const { city, state, postalCode } = booking.serviceAddress;
+      const key = JSON.stringify([city, state, postalCode, booking.category]);
+      const pocket = pockets.get(key) ?? { city, state, postalCode, category: booking.category, completedCount: 0, activeCount: 0, activeExceptionCount: 0 };
+      if (booking.status === "completed" || booking.status === "refunded") {
+        pocket.completedCount += 1;
+      } else if (booking.status !== "cancelled") {
+        pocket.activeCount += 1;
+      }
+      if (booking.activeExceptionType) {
+        pocket.activeExceptionCount += 1;
+      }
+      pockets.set(key, pocket);
+    }
+    return {
+      totalBookings: this.bookings.length,
+      requestedBookings: this.bookings.filter((booking) => booking.status === "requested").length,
+      requestedSinceCount: this.bookings.filter((booking) => new Date(booking.requestedAt).getTime() >= requestedSince).length,
+      activeExceptionCount: this.bookings.filter((booking) => Boolean(booking.activeExceptionType)).length,
+      disputedAfterCompletionCount: this.bookings.filter((booking) => booking.status === "disputed" && Boolean(booking.completedAt)).length,
+      pockets: [...pockets.values()]
+    };
+  }
+
   public async listBookingsByIds(bookingIds: string[]): Promise<Booking[]> {
     const requestedIds = new Set(bookingIds);
     return this.bookings.filter((booking) => requestedIds.has(booking.id));
+  }
+
+  public async findBookingByEvidenceId(evidenceId: string): Promise<Booking | undefined> {
+    return this.bookings.find((booking) => booking.serviceEvidence.some((evidence) => evidence.id === evidenceId));
   }
 
   public async findBookingById(bookingId: string): Promise<Booking | undefined> {
@@ -434,6 +615,17 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
       .map((match) => ({ ...match }));
   }
 
+  public async listCrewMatchesForCrewMembers(crewMemberIds: string[]): Promise<CrewMatchCandidate[]> {
+    const requestedIds = new Set(crewMemberIds);
+    return this.crewMatches.filter((match) => requestedIds.has(match.crewMemberId)).map((match) => ({ ...match }));
+  }
+
+  public async listCrewMatchesForCrewMember(crewMemberId: string): Promise<CrewMatchCandidate[]> {
+    return this.crewMatches
+      .filter((match) => match.crewMemberId === crewMemberId)
+      .map((match) => ({ ...match }));
+  }
+
   public async updateCrewMatch(
     matchId: string,
     updates: Partial<CrewMatchCandidate>
@@ -458,6 +650,15 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
 
   public async listProviderReviews(providerId: string): Promise<ProviderReview[]> {
     return this.providerReviews.filter((review) => review.providerId === providerId).map((review) => ({ ...review }));
+  }
+
+  public async listLatestProviderReviews(providerIds: string[], limit: number): Promise<ProviderReview[]> {
+    const requestedIds = new Set(providerIds);
+    const newestFirst = this.providerReviews
+      .filter((review) => requestedIds.has(review.providerId))
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+    const last = newestFirst[limit - 1];
+    return (last ? newestFirst.filter((review) => review.createdAt >= last.createdAt) : newestFirst).map((review) => ({ ...review }));
   }
 
   public async findProviderReviewById(reviewId: string): Promise<ProviderReview | undefined> {
@@ -539,6 +740,10 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
     return booking;
   }
 
+  public async findProviderByCalendarFeedToken(feedToken: string): Promise<ProviderProfile | undefined> {
+    return this.providers.find((provider) => provider.calendarConnection.feedToken === feedToken);
+  }
+
   public async findProviderById(providerId: string): Promise<ProviderProfile | undefined> {
     return this.providers.find((provider) => provider.id === providerId);
   }
@@ -570,6 +775,10 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
     checkoutSessionId: string
   ): Promise<PaymentRecord | undefined> {
     return this.payments.find((payment) => payment.checkoutSessionId === checkoutSessionId);
+  }
+
+  public async findPaymentByProcessorPaymentIntentId(paymentIntentId: string): Promise<PaymentRecord | undefined> {
+    return this.payments.find((payment) => payment.processorPaymentIntentId === paymentIntentId);
   }
 
   public async listPayments(): Promise<PaymentRecord[]> {
@@ -1059,6 +1268,18 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
     if (!row) return undefined;
     Object.assign(row, updates, { leaseToken: undefined, leaseExpiresAt: undefined });
     return { ...row };
+  }
+
+  public async createNotificationDeliveries(deliveries: NotificationDeliveryRecord[]): Promise<void> {
+    this.notificationDeliveries.push(...deliveries);
+  }
+
+  public async findNotificationContact(userId: string, role: AuthIdentityRecord["role"]): Promise<{ email: string; phone: string } | undefined> {
+    const profile = role === "customer" ? await this.findCustomerById(userId)
+      : role === "provider" ? await this.findProviderById(userId)
+      : role === "ops" ? await this.findOpsUserById(userId)
+      : await this.findCrewMemberById(userId);
+    return profile ? { email: profile.email, phone: profile.phone } : undefined;
   }
 
   public async createNotificationDelivery(

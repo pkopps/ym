@@ -92,6 +92,15 @@ const criticalPathMonitor = new CriticalPathMonitor({
   verifySessionToken,
   reportFailure: (check, error) => reportBackgroundFailure(`critical-path:${check}`, error)
 });
+
+// Finder-fee billing claims each charge under a per-provider lock, so every replica can run this.
+let finderFeeWork: Promise<unknown> | undefined;
+const finderFeeMaintenance = setInterval(() => {
+  finderFeeWork ??= platform.processDueFinderFees()
+    .catch(() => console.error("Finder-fee worker failed; open charges remain recoverable."))
+    .finally(() => { finderFeeWork = undefined; });
+}, 60_000);
+finderFeeMaintenance.unref();
 const controllers: ApiController[] = [
   new HealthController(runtimeConfiguration, async () => {
     if (shuttingDown) {
@@ -254,6 +263,7 @@ async function shutDown(reason: string): Promise<void> {
   }
   shuttingDown = true;
   clearInterval(notificationMaintenance);
+  clearInterval(finderFeeMaintenance);
   clearInterval(analyticsMaintenance);
   console.log(`YardMatch API received ${reason}; draining active requests.`);
 

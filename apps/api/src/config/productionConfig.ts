@@ -1,4 +1,5 @@
 import { resolveLaunchFeatureFlags, type LaunchFeatureFlags } from "@yardmatch/contracts";
+import { resolveFinderFeeDisputeWindowHours } from "../services/FinderFeeService";
 
 const DEVELOPMENT_JWT_SECRET = "yardmatch-dev-secret";
 
@@ -28,6 +29,7 @@ export interface RuntimeEnvironment {
   SENTRY_TRACES_SAMPLE_RATE?: string;
   YARDMATCH_PAYMENTS_ENABLED?: string;
   YARDMATCH_CREW_MARKETPLACE_ENABLED?: string;
+  FINDER_FEE_DISPUTE_WINDOW_HOURS?: string;
 }
 
 export type YardMatchDeploymentEnvironment = "local" | "staging" | "production";
@@ -298,6 +300,11 @@ export function validateRuntimeConfiguration(
   const deployed = production || staging;
   const maxRequestBodyBytes = parseMaxRequestBodyBytes(environment, problems);
   const features = resolveLaunchFeatureFlags(environment, problems);
+  try {
+    resolveFinderFeeDisputeWindowHours(environment);
+  } catch (error) {
+    problems.push((error as Error).message);
+  }
 
   if (!deployed) {
     if (problems.length > 0) {

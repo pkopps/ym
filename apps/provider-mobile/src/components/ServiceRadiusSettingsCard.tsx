@@ -29,8 +29,7 @@ export function ServiceRadiusSettingsCard() {
 
   return (
     <InfoCard
-      title={i18n.t("provider_radius.eyebrow")}
-      description={i18n.t("provider_radius.title")}
+      title={i18n.t("provider_radius.title")}
     >
       <Text style={styles.copy}>
         {i18n.t("provider_radius.copy")}
@@ -79,11 +78,8 @@ export function ServiceRadiusSettingsCard() {
 
       <View style={styles.summaryRow}>
         <View style={styles.summaryBlock}>
-          <Text style={styles.summaryTitle}>{i18n.t("provider_radius.match_rule.title")}</Text>
-          <Text style={styles.summaryText}>{i18n.t("provider_radius.match_rule.body")}</Text>
         </View>
         <View style={styles.summaryBlock}>
-          <Text style={styles.summaryTitle}>{i18n.t("provider_radius.operational_effect.title")}</Text>
           <Text style={styles.summaryText}>{i18n.t(getRadiusGuidanceKey(serviceRadiusMiles))}</Text>
         </View>
       </View>

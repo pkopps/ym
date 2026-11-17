@@ -1,5 +1,160 @@
 # Engineer Status
 
+## Current checkpoint: fixes for the bot army's top findings
+
+- Updated: November 17, 2026 (UTC).
+- Branch and commit: `claude/bots-fix-1-races` (from main); see the PR for the commit. The bot army itself is in PRs #49 to #51.
+- Completed: a provider can't hold two visits at once (creating and confirming a booking now check the provider's other active bookings; search already assumed this). Confirm takes the booking lock that cancel takes. A single-service booking honors its request id, so a double tap returns the first booking. Accepting crew beyond what the job needs is refused. Route start, work start and completion open 3 hours before the visit (`MarketplacePlatformService.visitActionsOpenHoursBeforeStart`); completion errors are 4xx instead of 500. Completion clears the stored live GPS point. Crew status writes only when it changes and crew updates run in crew-id order (the deadlocks). The reset request says to wait during the one-minute cooldown, and a used code says so. The customer dashboard searches the chosen day and window instead of the earliest opening, and no longer stores an internal note on each booking.
+- In progress: none.
+- Remaining: findings that need a product decision (one visit per arrival window, cancellation terms at booking, finder-fee notice when confirming a new customer, new-provider checklist wording, crew arrival instructions, travel time between stops, work concentrating on top-ranked providers), plus the bot harness update to work visits inside the new 3-hour window.
+- Blockers: none.
+- Changed workflows: providers and crew can't start a route, start work or complete a visit until 3 hours before it. A second request for a provider's time that's already requested or confirmed is refused with "That time is no longer open with this provider."
+- Validation: `npm run typecheck`; `npm run lint` with `--ignore-pattern '.claude/**'`; `npm run test:api` (438 passed, 35 skipped); `npm run test:api:postgres` (35 passed); `npm run test:scale` (zero errors); `npm run test:web:smoke` (61 passed); bot army seed 7 (all invariants held, no 500s); browser check of the dashboard date fix. Node 22.
+- Known defects: none found in these changes.
+- Screenshot paths: `reports/agent-checkpoints/engineer/latest/bot-fixes/dashboard-after-date-fix-1440x900.png`, `…-390x844.png`.
+- Recommended next task: decide the product questions above, then fix cancellation terms and confirmations in the customer flows.
+
+## Current checkpoint: remaining whole-table loads and the 200,000-booking run
+
+- Updated: November 14, 2026 (UTC).
+- Branch and commit: merged to main as PRs #35 to #44; #45 (`claude/scale-16-observability`) and `claude/scale-17-load-script-concurrency` are open; see the PRs for the commits.
+- Completed: the scale smoke has a recurring workload and a larger dataset behind `SCALE_LARGE=1` (#35). Scoped queries replaced whole-table loads in the public overview (#36), calendar feed token lookup (#37), provider calendar and payout ledgers (#38), crew staffing review, claim and summaries (#39), ops verification, ticket, retention and follow-up reads (#40), ops payout preview, financial exceptions and launch leads (#41, #44), payment lookups in checkout, the Stripe webhook and job completion, evidence photos and recovery options (#43), and the ops observability overview (#45). The analytics report counts providers with bookings by grouping instead of `count(DISTINCT)`.
+- In progress: #45 and the load-script and analytics branch are waiting on CI and review.
+- Remaining: every payment is still loaded by the ops payout preview and financial exception summary; every provider by five ops screens. The three recurring writes take about 2 seconds on 200,000 bookings and have not been profiled. The analytics report drops its cache on failure.
+- Blockers: none.
+- Changed workflows: none for users. Three orderings that Postgres never guaranteed are now fixed: verified providers come back oldest account first (public overview ties, recovery options), and where a booking has several payments the newest is used (provider ledger, stale-ticket sweep).
+- Validation: each PR ran `npm run typecheck`, `npm run lint`, `npm run test:api` (428 passed), `npm run test:api:postgres` (25 to 31 passed as tests were added), `prisma migrate diff --exit-code` where the schema changed (three new indexes: `provider_reviews(createdAt)`, `bookings(launchLeadId)`, GIN on `bookings.serviceEvidence`), and `SCALE_MAX_P95_MS=5000 npm run test:scale`; exact counts are in each PR. The large run passed three times at 12 operations in flight with zero errors; numbers are in `reports/scale-review/2026-11-14-crew-hot-path.md`. Run on Node 22 because the default Homebrew Node 25 fails to start on this machine.
+- Known defects: CI on main failed once after #36 merged (provider order in a parity test); fixed by #42. #42 was merged while its web smoke and mobile export jobs were still running. #38's first CI run failed the scale gate because its test left queued notifications; fixed before merge.
+- Screenshot paths: none; no screen changed.
+- Recommended next task: profile the recurring writes (plan creation, next-visit generation, rescheduling) on the large dataset and cut their query count.
+
+## Current checkpoint: crew reconciliation off the schedule read
+
+- Updated: November 14, 2026 (UTC).
+- Branch and commit: `claude/scale-5-reconcile-on-write`; see the PR for the commit.
+- Completed: `getCrewMatchesForCrew` no longer reconciles. Reconciliation for the affected provider runs after a booking is created (one-off, recurring, next recurring visit), rescheduled, has its schedule changed or a proposal answered, is recovered, cancelled, or has an address change reviewed, and after a provider denies a crew match; a crew call-off already did. Saving crew preferences runs it for every provider with an open seat. It runs after the write commits and never fails the write. The provider staffing view still reconciles when opened. Reconciliation loads the provider's bookings plus bookings that have not ended, instead of every booking and match (about 2 s to about 100 ms on the scale dataset).
+- In progress: none.
+- Remaining: no reconcile on crew registration, staffing-mode change or credential verification (reasons in the PR). 21 `listBookings()`, 5 `listCrewMatches()` and 11 `listProviders()` call sites still load whole tables.
+- Blockers: none.
+- Changed workflows: crew are offered jobs when a provider's bookings change or the provider opens staffing, not when a crew member opens their schedule. A crew member who signs up sees no offers until one of those happens.
+- Validation: `npm run typecheck`; `npm run lint` with the stale-worktree ignore pattern; `npm run test:api` (428 passed, 23 skipped); `npm run test:api:postgres` (24 passed); `prisma migrate diff --exit-code` (no drift); `SCALE_MAX_P95_MS=5000 npm run test:scale` twice (passed). Local runs used Node 22. Web smoke was not run; nothing under `apps/web` changed.
+- Known defects: none found.
+- Screenshot paths: none; no screen changed.
+- Recommended next task: decide whether new crew should get offers at sign-up, then scope the crew review and claim paths.
+
+## Current checkpoint: scale fixes steps 0 to 4
+
+- Updated: November 14, 2026 (UTC).
+- Branch and commit: five stacked branches, one PR each: `claude/scale-0-baseline`, `claude/scale-1-hot-path-queries`, `claude/scale-2-location-index`, `claude/scale-3-crew-lock`, `claude/scale-4-whole-table-loads`; see the PRs for the commits.
+- Completed: step 0 (crew and GPS workload in the scale smoke, baseline recorded). Step 1 (GPS pings, arrival tracking, crew schedule, crew openings and crew status read only the rows they use; reconciliation returns early when no upcoming booking needs crew). Step 2 (`user_accounts.latitude`/`longitude` kept in sync by a trigger, indexed, used by provider search). Step 3 (`crew-staffing` lock per provider; a pass over every provider reconciles the providers that need crew one at a time; auto-accept takes the crew member's schedule lock without waiting). Step 4, first batch: recurring plan creation, cancellation, summaries, next-visit generation and plan-scope recovery read one plan's bookings (`listBookingsForRecurringPlan`, index on `bookings.recurringPlanId`); twelve places that wanted one booking's crew matches (rescheduling, booking notices, route start, job start, evidence photos, route leader, crew cancel, provider assistant) read only those. Before and after numbers and the list of what still loads whole tables are in `reports/scale-review/2026-11-14-crew-hot-path.md`.
+- In progress: none.
+- Remaining: 22 `listBookings()`, 6 `listCrewMatches()` and 11 `listProviders()` call sites, listed by screen in the report. Taking reconciliation off the read path is proposed in the step 1 PR and not done.
+- Blockers: none.
+- Changed workflows: none. One matching difference, described in the step 3 PR: a pass over every provider now reads fresh data for each provider, so in auto-accept mode it no longer books one crew member onto overlapping jobs for two providers in the same pass.
+- Validation (on the step 4 branch, which contains all five steps): `npm run typecheck`; `npm run lint` with the stale-worktree ignore pattern; `npm run test:api` (424 passed, 23 skipped); `npm run test:api:postgres` (23 passed); `prisma migrate diff --exit-code` (no drift); `npm run prisma:seed` on a throwaway database (step 2); `SCALE_MAX_P95_MS=5000 npm run test:scale` three times (passed, slowest p95 1.1 s). Local runs used Node 22 because the default Homebrew Node does not start. Web smoke was not run locally; nothing under `apps/web` changed.
+- Known defects: none found.
+- Screenshot paths: none; no user-facing change.
+- Recommended next task: decide on the reconciliation proposal in the step 1 PR, then scope the crew staffing slow path and the provider calendar and payout ledgers.
+
+## Current checkpoint: provider landing page rebuild
+
+- Updated: November 14, 2026 (UTC).
+- Branch and commit: `claude/provider-landing-rebuild`, PR #28, rebased onto `claude/copy-cut-second-pass` (PR #27), which merges first; see the PR for the commit.
+- Completed: `/provider` is now a hero (one headline, one supporting line, one sign-up button) and three sections: what you get (three items and a link to the provider standards), pricing as a plain list (finder fee $75, $110 and $150 by lawn size, first customer free, no per-job fee, optional Pro $49/month and Teams $99/month), and a closing sign-up panel. Removed the service-radius demo, operating-levers list, provider-standards cards, retention and demand sections and the finder-fee explainer paragraphs. The header's existing `/provider#pricing` and `/provider#requirements` links now land on real anchors. Deleted `ProviderRadiusSettingsCard` (only this page used it), its `.radius-settings*` CSS and the old landing CSS blocks. `provider_landing.*` went from 46 keys (after the second copy-cut pass) to 31; none were shared with the home page. `en.json` and `es.json` are in sync at 3,458 keys.
+- In progress: none.
+- Remaining: none.
+- Blockers: none.
+- Changed workflows: none. Every sign-up button still goes to `/auth/provider/create`. The page no longer has a separate login button; the header keeps "Log in".
+- Validation: `npm run typecheck`, `npm run lint` and `npm run i18n:validate` (3,458 keys) passed. `npm run test:web:smoke` (includes `tests/web/seo.spec.ts`): 61 of 61 after the rebase. Run on Node 22 (`/opt/homebrew/opt/node@22`) because the default Homebrew Node fails to start (missing `libsimdjson.33.dylib`), with servers on ports 3100 and 4101.
+- Known defects: none found. The price amounts on the page are strings in the locale files, as elsewhere on the web; they are not read from `ACTIVE_FINDER_FEE_ECONOMICS_POLICY`.
+- Screenshot paths: `reports/agent-checkpoints/engineer/latest/provider-landing/` holds `provider-after-{desktop,mobile}.png`, `es-provider-after-{desktop,mobile}.png`, `provider-before-{desktop,mobile}.png` and `home-{before,after}-{desktop,mobile}.png` (1440x900 and 390x844 viewports, full page). The home page before and after are pixel-identical at both sizes (`compare.mjs`). Git-ignored, local evidence only; `capture.mjs` reproduces them.
+- Recommended next task: read the landing-page prices from the finder-fee policy so they cannot drift from billing.
+
+## Current checkpoint: web design-token consolidation
+
+- Updated: November 13, 2026 (UTC).
+- Branch and commit: `claude/web-design-tokens`; see the PR for the commit.
+- Completed: audited `apps/web/src/app/globals.css` and extended the existing `--ym-*` tokens in `packages/branding` (six tints and strong shades, a six-step type scale, a pill radius; mirrored in `tokens.ts`). Replaced raw values with tokens by script: 322 colours, 140 font sizes, 86 radii, 19 shadows, 383 spacing values. Distinct values went from 106 hex colours to 15, 60 font sizes to 19, 25 radii to 10, 19 shadows to 6. Form fields, cards and panels, text buttons, empty states and error text each have one look. 125 of 126 inline `style={{}}` uses became `.u-*` utility classes or small named classes. Token reference, mapping and everything that did not map are in `docs/DESIGN_TOKENS.md`.
+- In progress: none.
+- Remaining: fluid heading sizes (12 `clamp()` values), spacing values between scale steps (mostly 20px and 10px), decorative gradients and the loader illustration still use raw values. About ten blocks of unused CSS (`.site-footer*`, `.app-banner*`, `.store-badge`, hero carousel, tool illustration, mower strip, map viewport) were tokenised where simple but not deleted.
+- Blockers: none.
+- Changed workflows: none. No markup, copy or layout changes beyond swapping inline styles for classes. The home page markup is untouched; its CSS changed by token replacement only.
+- Validation: `npm run typecheck` passed. `npm run lint` passed for the repository (`eslint . --ignore-pattern '.claude/worktrees/**'`); the plain command also lints a stale local worktree copy under `.claude/worktrees/` and reports 126 errors from it. `npm run test:web:smoke`: 60 of 61 passed. `provider-pricing.spec.ts:4` fails (saved starting price reads 35.00, expected 48.25) and fails the same way on `main` without these changes. Local setup needed Node 22 (`/opt/homebrew/opt/node@22`), `npm run prisma:generate` and `npx next typegen apps/web` because the default Homebrew Node and generated files were stale.
+- Known defects: none found from this change. Home page pixel comparison: heights 1245 to 1244px (desktop) and 1450 to 1452px (mobile); differences are hairline colour, a few text sizes within 1.6px, and the location dialog radius.
+- Screenshot paths: `reports/agent-checkpoints/engineer/latest/design-tokens/{before,after,diff}/` holds `home`, `login`, `booking-matches`, `booking-schedule`, `booking-property-details`, `booking-review`, `customer-dashboard`, `provider`, `provider-management`, each `-desktop.png` (1440x900) and `-mobile.png` (390x844), full page. Git-ignored, local evidence only. `capture.mjs` and `compare.mjs` in that folder reproduce them.
+- Recommended next task: delete the unused CSS blocks, then decide on one or two display sizes and a 20px spacing step.
+
+## Current checkpoint: copy cut across non-ops screens
+
+- Updated: November 11, 2026 (UTC).
+- Branch and commit: `claude/remove-self-explanatory-copy-otfrru`; see the PR for the commit.
+- Completed: "Copy rules" added to `AGENTS.md`. Swept customer web, provider web, crew web, auth and provider-mobile screens: removed eyebrows, helper and description lines that restate headings, and the metric tiles on the provider board, crew dashboard, crew schedule, crew history, provider landing and local proof section; shortened what was left. Deleted 247 keys that were already unused and six unreferenced web components (`BookedBusinessResults`, `CrewHiringDashboard`, `CustomerListingsHero`, `HomeServiceScroller`, `ProviderMowerScrollStrip`, `ProviderSiteHeader`) with their keys. `en.json`, `es.json` and `pseudo.json` are in sync at 3,523 keys (was 4,018).
+- Word count (keys not starting with `ops` or `trust_policy.`): 16,709 before, 12,429 after, a 25.6% cut. The 40% target was not reached. 3,424 of those words are shared with customer-mobile or crew-mobile and were left alone; another 463 belong to ops screens with non-ops prefixes. On the remaining 12,822 words the cut is 33.4% (to 8,542).
+- In progress: none.
+- Remaining: provider screens whose strings live under `ops_auto.provider_management_board.*` and `ops_auto.provider_payments_board.*` (82 keys) were not touched because `ops_*` strings were out of scope. Reaching 40% needs either those plus the customer-mobile and crew-mobile strings, or removing functional text.
+- Blockers: none.
+- Changed workflows: none. Text and decorative tiles only; no layout fixes.
+- Validation: `npm run typecheck`, `npm run lint`, `npm run i18n:validate` (3,523 keys), `npm run experience-map:validate`, `npm run test:api` (420 passed, 16 skipped, 0 failed), `npm run build:provider-mobile` (Expo export) passed. `npm run test:web:smoke`: 61 of 61, run through a local config that points Playwright at the preinstalled Chromium; ten spec files had assertions updated to the new copy.
+- Known defects: none found. Layout left empty or unbalanced by the removals is listed in the PR description.
+- Screenshot paths: `reports/agent-checkpoints/engineer/copy-cut-2026-11/*-{desktop,mobile}.png` (1440x900 and 390x844 viewports, full page), 39 screens. Provider-mobile screens were not captured: the exported web build stops at session restore because secure storage is native-only.
+- Recommended next task: decide whether the shared customer-mobile and crew-mobile strings and the `ops_auto.provider_*` strings can be cut, then rebalance the provider landing hero.
+
+## Current checkpoint: launch-scope chunk B (finder-fee economics policy)
+
+- Updated: November 10, 2026 (UTC).
+- Branch and commit: `claude/finder-fee-economics-policy-5sa63d`, PR #24; see the PR for the latest commit.
+- Completed: economics policy `2026-10-finder-fee-v1` in `packages/domain` (one-time finder fee $75/$110/$150 mapped onto the booking flow's four lawn-size bands, no per-job fee, provider's first relationship waived, completion trigger with a configurable dispute window, default 72 hours), with the 2026-07 settlement policy unchanged. `FinderFeeService` records, gates, retries and charges finder fees to the provider's saved Stripe card; Prisma constraints keep one fee per relationship and one waiver per provider; failures show in Ops → Finder fees. Follow-up: providers can add or replace the card from provider management on the web (Billing section, Stripe-hosted setup, return completes it) and from the provider app's Work tab (opens Stripe in the browser; the app picks the card up from Stripe on return through `POST /api/providers/billing/refresh`, so no web sign-in is needed). Both show the tiers from the API and warn when a charge could not be made. The provider retention summary now reports the new policy's tiers and counts a relationship as acquired when its finder fee was billed, waived or covered by the old policy, so returned-customer counts and prior-provider preference work with payments off; the "Awaiting first settlement" label is now "Finder fee pending".
+- In progress: none.
+- Remaining: none for this chunk. The customer "confirm visit" button was left out on purpose: the 72-hour window bills fees without it.
+- Blockers: none. No live Stripe key was used; Stripe calls are covered by a fake gateway and mocked web routes.
+- Changed workflows: provider job completion starts a finder-fee record; providers save a card for finder fees on web and in the app; Ops gets a Finder fees section.
+- Validation: `npm run prisma:generate`, `npm run typecheck`, `npm run lint`, `npm run i18n:validate` (4,018 keys) passed. `npm run test:api`: 420 passed, 16 database-only skipped, 0 failed. `npm run test:api:smoke` passed. `npm run test:api:postgres` against a local PostgreSQL 16 migrated from empty: 16 of 16 passed, no schema drift. `npm run test:web:smoke`: 61 of 61 passed, including three new cases in `tests/web/provider-billing.spec.ts`. Provider-app Expo export bundled iOS, Android and web. Not run: simulator, live Stripe.
+- Known defects: none found.
+- Screenshot paths: `reports/agent-checkpoints/engineer/latest/provider-billing-{no-card,card-saved}-{desktop,mobile}.png` and `provider-card-saved-{desktop,mobile}.png` (1440x900 and 390x844), written by the billing spec. Git-ignored, local evidence only.
+- Recommended next task: run card setup and one off-session finder-fee charge against Stripe test mode in staging.
+
+## Current checkpoint: Vercel staging build and login follow-ups
+
+- Updated: November 10, 2026 (UTC).
+- Branch and commit: `claude/launch-scope-chunk-c-copy-9j6dml`, restarted from `bed4e06`; see the PR for the commit.
+- Completed: `apps/web/vercel.json` sets the Vercel build command to `cd ../.. && npm run prisma:generate && npm run typecheck && npm run build:web`, replacing the dashboard command `cd ../.. && npm run build:api && npm run build:web` that has failed every staging build. `STAGING_DEPLOYMENT.md` explains it. `PAGE_FLOW.md`, its login screenshots and the generated flow diagrams now show the single `/login` page and the staff page; the three role-login screenshots are gone. Removed `hedge-trimmer.png` and `string-trimmer.png`, which only the old login illustration used.
+- In progress: none.
+- Remaining: the PR's own Vercel preview is the first real test of the new build command. The other `PAGE_FLOW.md` screenshots predate recent work (for example `/crew`) and were not retaken. `gutter-cleaning.png` and `mulch-refresh.png` were already unreferenced before the login change and were kept.
+- Blockers: none.
+- Changed workflows: none for users. Staging builds no longer compile `apps/api` separately; `npm run typecheck` (`tsc -b`) type-checks it and builds the workspace packages the web app imports.
+- Validation: reproduced the Vercel failure locally from a clean state (no package `dist/`, no generated Prisma client): the old command failed with 341 TypeScript errors (`TS6305` and implicit `any`), the new command built in 53 seconds with none. `npm run lint` and `npm run typecheck` passed; `tests/web/smoke.spec.ts` and `tests/web/login.spec.ts` passed (15).
+- Known defects: none found.
+- Screenshot paths: `docs/page-flow-screenshots/{login,login-ops}.png` (1440x1200) and `docs/page-flow-diagrams/signup-login-flow.png`.
+- Recommended next task: confirm the staging deployment goes green after merge, then run the hosted acceptance workflow.
+
+## Current checkpoint: single web login page
+
+- Updated: November 9, 2026 (UTC).
+- Branch and commit: `claude/launch-scope-chunk-c-copy-9j6dml`, restarted from `3d4ecd1`; see the PR for the implementation commit.
+- Completed: `/login` is one form (email, password, Log in, "Forgot password?", Google, Apple, "Create an account") that redirects by the role the API returns and still validates `returnTo` through `getRoleRedirectPath`. `/login/customer`, `/login/provider` and `/login/crew` are HTTP 307 redirects to `/login` (in `proxy.ts`, locale and `returnTo` kept). `/login/ops` is a separate "Staff log in" page that refuses non-staff accounts, and `/login` refuses staff accounts; neither keeps a session in that case. The story column, second intro, helper lines and Back button are gone, with their CSS, the illustration list and 108 locale keys. Social login no longer sends a role: the API signs the person in with the role the existing account has. Provider-mobile sign-in shows one title and no product copy, with email, password and code input hints.
+- In progress: none.
+- Remaining: `PAGE_FLOW.md` and its screenshots still describe the role picker (generated doc, not regenerated). Social sign-in still cannot complete for accounts with two-factor on; they are told to use email and password, as before.
+- Blockers: none. Live Google and Apple sign-in were not exercised; the provider exchange is stubbed in the API tests.
+- Changed workflows: one login address for customers, providers and crew; the home header "Log in" is a link instead of a three-item menu. API: `role` is optional on `GET /api/auth/google/start` and `/apple/start` when `mode=login`; a login that names a role (the mobile apps) still has to match, sign-up still requires one, and staff accounts are never signed in through a social provider.
+- Validation: `npm run typecheck`, `npm run lint`, `npm run i18n:validate` (3,983 keys) and `npm run experience-map:validate` passed. `npm run test:web:smoke`: 58 of 58, including seven new cases in `tests/web/login.spec.ts` (page contents and field hints, role redirect for all three roles, `returnTo`, former URLs, two-factor, password reset, staff-only page). `npm run test:api`: 395 passed, 15 database-only skipped, 1 failed. The failure is `ops support queue includes weather or route delay exception scripts...`, which also fails on unchanged `main` when run late in the UTC day because its fixture crosses a service-day boundary. Five new social-login cases in `auth-controller.test.ts` pass. Provider-mobile Expo export passed. Not run: Postgres integration, simulator.
+- Known defects: none found in the changed flow. A failed reset attempt hides the "Reset started" panel (existing behaviour).
+- Screenshot paths: `reports/agent-checkpoints/engineer/latest/single-login/{login,staff-login}-{desktop,mobile}.png` (1440x900 and 390x844), written by the login spec. This folder is git-ignored, so the images are local evidence only.
+- Recommended next task: regenerate `PAGE_FLOW.md`, then fix the time-of-day dependent API test.
+
+## Current checkpoint: launch-scope chunk C (copy)
+
+- Updated: November 9, 2026 (UTC).
+- Branch and commit: `claude/launch-scope-chunk-c-copy-9j6dml`, based on `c490ff2`; see the PR for the implementation commit.
+- Completed: English and Spanish copy now states the October 14 model. Fees: one-time finder fee of $75, $110 or $150 by property size after the first completed job with a new customer, first customer relationship free, no per-job fee, customers pay the provider directly, optional Pro $49/month and Teams $99/month (`auth_provider.economics.*`, `provider_landing.pricing.*`, `provider_landing.retention.note`, provider dashboard retention detail on web and provider mobile, and the API retention eligibility sentence). Payouts: removed from provider login, sign-up, landing, About, help and default metadata, and provider-mobile auth/support descriptions. Crew: landing, About, login, crew sign-up and crew-app copy describe crew as the provider's own team; "Find crew members", the provider "For crews" link and the unused provider header crew entries render only with the crew marketplace flag on; the home-header account menu hides Payments with the payments flag off.
+- In progress: none.
+- Remaining: chunk B (finder-fee policy and billing). Until it ships no code charges the fees the copy describes, and the retention board still counts "Finder fee covered" from recorded settlements, which do not exist with payments off. Provider staffing copy that describes automatic crew matching (`provider_live.staffing.body`, `provider_live.crew.no_matches_*`, provider-mobile equivalents) was left because it describes behaviour that still runs. Customer payment and refund strings inside flag-gated checkout screens were left as instructed.
+- Blockers: none. Launch counsel should review the `trust_policy.*` lines listed in the PR description.
+- Changed workflows: none functionally. About-page crew buttons and the crew login secondary button now go to crew login and Help instead of public crew openings.
+- Validation: `npm run typecheck`, `npm run lint`, `npm run i18n:validate` (4,087 keys) passed; `npm run test:api` 391 passed, 15 database-only skipped; `npm run test:web:smoke` 51 of 51 passed (local flags default on). Screenshot pass ran against API and web started with both launch flags off; the four pages had no "$30", "6.99", payout, deduction or crew-hiring text and no horizontal overflow at either size. Not run: Expo export for provider mobile, Postgres integration.
+- Known defects: with payments on locally, settlement code still applies the old $30 and $6.99 policy (chunk B). No deployed path can charge it with the flag off; see the PR description for the trace and the one webhook caveat.
+- Screenshot paths: `reports/agent-checkpoints/engineer/latest/launch-scope-copy/{provider,provider-pricing,provider-signup,provider-login,home}-{desktop,mobile}.png` (1440x900 and 390x844, flags off).
+- Recommended next task: chunk B, then replace the hardcoded fee amounts in copy with values from the new policy.
+
 ## Current checkpoint: user-facing error messages and critical-path alerting
 
 - Updated: November 7, 2026 (America/New_York).
@@ -482,3 +637,18 @@ Add an ops recovery workflow for paused customer/provider relationships so suppo
 - Recommended next task: define the approved ZIP/service minimum matrix, then use the audited admin editor to activate it in staging and independently verify a provider quote and booking.
 
 Agent-reported completion is checkpoint evidence, not independent acceptance by Patrick or the Project Manager.
+
+## Copy cut, second pass — 2026-11-14
+
+- Branch and commit: `claude/copy-cut-second-pass`, from `main` at `0784fc5`.
+- Completed work: second sweep of non-ops, non-home screens after PR #25. Removed 50 keys (helper lines that restate a heading or its button, the provider landing "Bring in jobs" section, the town page "Book with confidence / Know what to expect" pair, the service page "What happens after you ask for help" card, sign-up choice descriptions). Rewrote 44 strings: 35 "Unable to…" errors now end with "Try again", and the finder-fee card copy is shorter. en, es and pseudo in sync at 3,473 keys.
+- Word count (en.json, keys not starting `ops` or `trust_policy.`, excluding the 117 keys rendered by the home page and site chrome): 11,992 → 11,599 (3.3%). The 40% target was not reached; the remaining words are field labels, statuses, errors, fee and policy disclosures, and 3,368 words shared with customer-mobile and crew-mobile.
+- In-progress work: none.
+- Remaining work: none in this slice.
+- Blockers: none.
+- Changed workflows: none; copy and markup removal only. The booking confirmation page no longer shows a supporting line once a visit is confirmed.
+- Validation results: `npm run typecheck` passed; `npm run i18n:validate` passed (3,473 keys); `npm run lint` fails only on files inside `.claude/worktrees/` (126 errors there, 0 in this checkout; passes with that folder ignored); `npm run test:web:smoke` 60 of 61 passed, the one failure asserted a shortened string and passes after the assertion update (that spec re-run: 3 of 3); `npm run build:provider-mobile` passed.
+- Known defects: none found.
+- Screenshot paths: `reports/agent-checkpoints/engineer/copy-cut-pass-2/` (17 screens at 1440x900 and 390x844, full page). Home page screenshots are byte-identical to captures from `main`.
+- Not captured: provider-mobile finder-fee card, auth completion pending state, the schedule modal service picker, the refund block on a completed visit, and the provider board settings cards (collapsed by default).
+- Recommended next task: decide whether to shorten the `ops_auto.provider_*` strings on the provider board and the strings shared with customer and crew mobile, which is where the remaining removable words are.

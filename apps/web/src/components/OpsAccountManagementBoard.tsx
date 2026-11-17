@@ -357,7 +357,7 @@ export function OpsAccountManagementBoard({ currentOpsUserId }: { currentOpsUser
         {accounts.length === 0 ? (
           <p>{i18n.t("ops_auto.ops_account_management_board.no_ops_accounts_are_available_right_now_sydo6k")}</p>
         ) : (
-          <div className="stack-lg" style={{ paddingBottom: 0 }}>
+          <div className="stack-lg u-pb-0">
             {accounts.map((account) => {
               const draft = getProfileDraft(account);
               const isCurrentAccount = currentOpsUserId === account.profile.id;

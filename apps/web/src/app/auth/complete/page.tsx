@@ -6,14 +6,9 @@ import { addLocalePrefix, stripLocalePrefix, type SupportedLocale } from "@yardm
 import { useI18n } from "@yardmatch/i18n/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createWebApiClient, saveStoredSession } from "../../../lib/api";
-import { getRoleRedirectPath } from "../../../lib/redirects";
+import { getRoleRedirectPath, roleHomePaths } from "../../../lib/redirects";
 
-const redirectByRole: Record<MarketplaceRole, string> = {
-  customer: "/customer/dashboard",
-  provider: "/provider/management",
-  ops: "/ops",
-  "crew-member": "/crew"
-};
+const redirectByRole = roleHomePaths;
 
 function localizeRedirectPath(path: string, locale: SupportedLocale) {
   return stripLocalePrefix(path).locale ? path : addLocalePrefix(path, locale);
@@ -147,9 +142,7 @@ export default function AuthCompletePage() {
     return (
       <main className="container stack-lg">
         <section className="page-hero">
-          <span className="eyebrow">{i18n.t("auth_complete.success.eyebrow")}</span>
           <h1>{i18n.t("auth_complete.success.title")}</h1>
-          <p>{i18n.t("auth_complete.success.body")}</p>
         </section>
       </main>
     );
@@ -159,9 +152,7 @@ export default function AuthCompletePage() {
     return (
       <main className="container stack-lg">
         <section className="page-hero">
-          <span className="eyebrow">{i18n.t("auth_complete.pending.eyebrow")}</span>
           <h1>{i18n.t("auth_complete.pending.title")}</h1>
-          <p>{i18n.t("auth_complete.pending.body")}</p>
         </section>
 
         <section className="card">
@@ -219,14 +210,13 @@ export default function AuthCompletePage() {
               <div className="stack-sm">
                 {suggestions.map((suggestion) => (
                   <button
-                    className="list-panel"
+                    className="list-panel u-text-left u-w-full"
                     key={suggestion.id}
                     onClick={() => {
                       setAddress(suggestion.address);
                       setAddressQuery(suggestion.label);
                       setSuggestions([]);
                     }}
-                    style={{ textAlign: "left", width: "100%" }}
                     type="button"
                   >
                     <strong>{suggestion.label}</strong>
@@ -294,7 +284,6 @@ export default function AuthCompletePage() {
   return (
     <main className="container stack-lg">
       <section className="page-hero">
-        <span className="eyebrow">{i18n.t("auth_complete.issue.eyebrow")}</span>
         <h1>{i18n.t("auth_complete.issue.title")}</h1>
         <p>{errorMessage || i18n.t("auth_complete.issue.body")}</p>
       </section>
@@ -303,16 +292,7 @@ export default function AuthCompletePage() {
         <div className="cta-row">
           <a
             className="button"
-            href={addLocalePrefix(
-              role === "provider"
-                ? "/login/provider"
-                : role === "ops"
-                  ? "/login/ops"
-                  : role === "crew-member"
-                    ? "/login/crew"
-                    : "/login/customer",
-              i18n.locale
-            )}
+            href={addLocalePrefix(role === "ops" ? "/login/ops" : "/login", i18n.locale)}
           >
             {i18n.t("auth_complete.back_to_login")}
           </a>

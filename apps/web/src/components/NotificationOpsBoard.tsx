@@ -136,7 +136,7 @@ export function NotificationOpsBoard() {
       ) : null}
 
       {health ? (
-        <div className="stack-lg" style={{ paddingBottom: 0 }}>
+        <div className="stack-lg u-pb-0">
           <div className="grid-three">
             <article className="card">
               <h2>{health.deliveriesLast24Hours}</h2>
@@ -192,7 +192,7 @@ export function NotificationOpsBoard() {
           <div className="grid-two">
             <article className="list-panel">
               <h3>{i18n.t("notification_ops.breakdown.title")}</h3>
-              <div className="stack-md" style={{ paddingBottom: 0 }}>
+              <div className="stack-md u-pb-0">
                 {health.channels.length > 0 ? (
                   health.channels.map((channel) => (
                     <article className="list-panel" key={`${channel.channel}-${channel.provider}`}>
@@ -229,7 +229,7 @@ export function NotificationOpsBoard() {
 
             <article className="list-panel">
               <h3>{i18n.t("notification_ops.failures.title")}</h3>
-              <div className="stack-md" style={{ paddingBottom: 0 }}>
+              <div className="stack-md u-pb-0">
                 {health.recentFailures.length > 0 ? (
                   health.recentFailures.map((delivery) => (
                     <article className="list-panel" key={delivery.id}>

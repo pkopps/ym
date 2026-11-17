@@ -3,6 +3,7 @@ import { ProviderAvailabilityPanel } from "./ProviderAvailabilityPanel";
 import { ProviderPropertyCorrectionPanel } from "./BookingPropertyCorrectionPanel";
 import { ProviderCredentialsPanel } from "./ProviderCredentialsPanel";
 import { ProviderPricingPanel } from "./ProviderPricingPanel";
+import { ProviderBillingPanel } from "./ProviderBillingPanel";
 import type { PropertyPhotoArea } from "@yardmatch/contracts";
 
 import { BookingSchedulePanel } from "./BookingSchedulePanel";
@@ -330,10 +331,6 @@ export function ProviderLiveManagementBoard() {
   const calendarHealth = calendarOverview?.syncHealth ?? calendarImports?.syncHealth;
   const calendarBlocks = provider?.calendarConnection.externalBlocks ?? [];
   const externalBlockingEnabled = provider?.calendarConnection.externalEventsBlockingEnabled ?? false;
-  const totalAssignedCrew = useMemo(
-    () => jobs.reduce((sum, job) => sum + job.assignedCrewMembers, 0),
-    [jobs]
-  );
   const totalCrewGap = useMemo(() => jobs.reduce((sum, job) => sum + job.crewGap, 0), [jobs]);
   const visibleJobs = jobs;
   const priorityJob = useMemo(() => {
@@ -1009,9 +1006,8 @@ export function ProviderLiveManagementBoard() {
     return (
       <section className="card">
         <h2>{i18n.t("provider_live.login_required.title")}</h2>
-        <p>{i18n.t("provider_live.login_required.body")}</p>
         <div className="cta-row">
-          <a className="button" href={addLocalePrefix("/login/provider", i18n.locale)}>
+          <a className="button" href={addLocalePrefix("/login", i18n.locale)}>
             {i18n.t("provider_live.login_required.cta")}
           </a>
         </div>
@@ -1148,20 +1144,19 @@ export function ProviderLiveManagementBoard() {
         <section className="provider-route-focus" aria-label={i18n.t("provider_live.today_path")}>
           <span className="eyebrow">{i18n.t("provider_live.today_path")}</span>
           <h2>{i18n.t("provider_live.no_jobs.title")}</h2>
-          <p>{i18n.t("provider_live.no_jobs.body")}</p>
         </section>
       )}
 
       <nav className="workspace-nav" aria-label={i18n.t("workspace.destinations")}>
-        <a href="#provider-jobs">{i18n.t("workspace.jobs")}</a><a href="#provider-setup">{i18n.t("workspace.setup")}</a><a href="#provider-pricing">{i18n.t("pricing.title")}</a><a href="#provider-settings">{i18n.t("workspace.settings")}</a>
+        <a href="#provider-jobs">{i18n.t("workspace.jobs")}</a><a href="#provider-setup">{i18n.t("workspace.setup")}</a><a href="#provider-pricing">{i18n.t("pricing.title")}</a><a href="#provider-billing">{i18n.t("provider_billing.title")}</a><a href="#provider-settings">{i18n.t("workspace.settings")}</a>
       </nav>
       {provider ? <WorkspaceSection id="provider-pricing" title={i18n.t("pricing.title")} defaultOpen={provider.verificationStatus !== "verified"}><ProviderPricingPanel postalCode={provider.address.postalCode} categories={provider.categories} /></WorkspaceSection> : null}
+      {provider ? <WorkspaceSection id="provider-billing" title={i18n.t("provider_billing.title")}><ProviderBillingPanel /></WorkspaceSection> : null}
       {provider ? <ProviderAvailabilityPanel /> : null}
       {provider ? <ProviderCredentialsPanel provider={provider} onUpdated={updated => setOverview(current => current ? { ...current, provider: updated } : current)} /> : null}
       <WorkspaceSection id="provider-setup" title={i18n.t("workspace.setup")} defaultOpen={provider?.verificationStatus !== "verified"}>
       {provider ? (
         <section className="card">
-          <span className="eyebrow">{i18n.t("provider_live.verification.eyebrow")}</span>
           <h2>
             {provider.verificationSummary?.headline ??
               (provider.verificationStatus === "verified"
@@ -1170,15 +1165,11 @@ export function ProviderLiveManagementBoard() {
                   ? i18n.t("provider_live.verification.rejected_title")
                   : i18n.t("provider_live.verification.pending_title"))}
           </h2>
-          <p>
-            {provider.verificationSummary?.summary ??
-              (provider.verificationStatus === "verified"
-                ? i18n.t("provider_live.verification.verified_body")
-                : provider.verificationStatus === "rejected"
-                  ? provider.verificationNotes ??
-                    i18n.t("provider_live.verification.rejected_body")
-                  : i18n.t("provider_live.verification.pending_body"))}
-          </p>
+          {provider.verificationSummary?.summary ?? (provider.verificationStatus === "rejected" ? provider.verificationNotes : undefined) ? (
+            <p>
+              {provider.verificationSummary?.summary ?? provider.verificationNotes}
+            </p>
+          ) : null}
           <div className="chip-row">
             <span>{i18n.t("provider_live.verification.status", { status: provider.verificationStatus.replaceAll("-", " ") })}</span>
             <span>
@@ -1223,9 +1214,7 @@ export function ProviderLiveManagementBoard() {
 
       {provider ? (
         <section className="card">
-          <span className="eyebrow">{i18n.t("provider_live.profile.eyebrow")}</span>
           <h2>{i18n.t("provider_live.profile.title")}</h2>
-          <p>{i18n.t("provider_live.profile.body")}</p>
           <div className="stack-md">
             <label className="form-field form-field--full">
               <span>{i18n.t("provider_live.profile.company_name")}</span>
@@ -1325,7 +1314,6 @@ export function ProviderLiveManagementBoard() {
               <section className="service-photo-panel">
                 <div>
                   <h3>{i18n.t("provider_live.customer_photos.title")}</h3>
-                  <p>{i18n.t("provider_live.customer_photos.body")}</p>
                 </div>
                 <div className="service-photo-strip">
                   {job.evidencePhotos
@@ -1684,7 +1672,6 @@ export function ProviderLiveManagementBoard() {
                   {job.matches.length === 0 ? (
                     <div className="list-panel">
                       <strong>{i18n.t("provider_live.crew.no_matches_title")}</strong>
-                      <p>{i18n.t("provider_live.crew.no_matches_body")}</p>
                     </div>
                   ) : (
                     job.matches.map((match) => {
@@ -1798,7 +1785,6 @@ export function ProviderLiveManagementBoard() {
                 <div className="search-result-title">
                   <div>
                     <h3>{i18n.t("provider_live.chat.title")}</h3>
-                    <p>{i18n.t("provider_live.chat.body")}</p>
                   </div>
                 </div>
                 <div className="cta-row">
@@ -1866,9 +1852,7 @@ export function ProviderLiveManagementBoard() {
       ) : null}
       <WorkspaceSection id="provider-settings" title={i18n.t("workspace.settings")}>
       <section className="card">
-        <span className="eyebrow">{i18n.t("provider_live.assistant.eyebrow")}</span>
         <h2>{i18n.t("provider_live.assistant.title")}</h2>
-        <p>{i18n.t("provider_live.assistant.body")}</p>
         <details className="service-card-disclosure">
           <summary className="service-card-disclosure__summary">{i18n.t("provider_live.assistant.examples")}</summary>
           <div className="service-card-disclosure__body">
@@ -1924,7 +1908,7 @@ export function ProviderLiveManagementBoard() {
           </button>
         </div>
         {assistantResult ? (
-          <div className="stack-md" style={{ paddingTop: "1rem" }}>
+          <div className="stack-md u-pt-4">
             <article className="list-panel">
               <strong>{assistantResult.previewLabel}</strong>
               <p>{assistantResult.previewMessage}</p>
@@ -2008,13 +1992,11 @@ export function ProviderLiveManagementBoard() {
 
       <section className={`provider-capacity-alert ${totalCrewGap > 0 ? "provider-capacity-alert--warning" : ""}`}>
         <div>
-          <span className="eyebrow">{i18n.t("provider_live.staffing.eyebrow")}</span>
           <h2>
             {totalCrewGap > 0
               ? i18n.t("provider_live.staffing.gap_title", { count: totalCrewGap })
               : i18n.t("provider_live.staffing.covered_title")}
           </h2>
-          <p>{i18n.t("provider_live.staffing.body")}</p>
         </div>
         <div className="cta-row">
           <button
@@ -2040,7 +2022,6 @@ export function ProviderLiveManagementBoard() {
         <article className="card">
           <span className="eyebrow">{i18n.t("provider_live.settings.service_area")}</span>
           <h2>{i18n.t("common.format.miles", { count: provider?.serviceRadiusMiles ?? 0 })}</h2>
-          <p>{i18n.t("provider_live.settings.service_area_body")}</p>
           <div className="cta-row">
             <button
               className="button-secondary"
@@ -2073,7 +2054,6 @@ export function ProviderLiveManagementBoard() {
         <article className="card">
           <span className="eyebrow">{i18n.t("provider_live.settings.reminder_timing")}</span>
           <h2>{i18n.t("provider_live.duration.minutes", { count: provider?.departureReminderLeadMinutes ?? 0 })}</h2>
-          <p>{i18n.t("provider_live.settings.reminder_timing_body")}</p>
           <div className="cta-row">
             <button
               className="button-secondary"
@@ -2211,7 +2191,6 @@ export function ProviderLiveManagementBoard() {
         <article className="card">
           <span className="eyebrow">{i18n.t("provider_live.settings.payout_timing")}</span>
           <h2>{provider ? formatWeekdayLabel(i18n, provider.weeklyPayoutDay) : formatWeekdayLabel(i18n, "Thu")}</h2>
-          <p>{i18n.t("provider_live.settings.payout_timing_body")}</p>
           <p>{i18n.t("provider_live.settings.payout_security_body")}</p>
           <div className="cta-row">
             {(["Tue", "Thu", "Fri"] as const).map((weekday) => (
@@ -2267,23 +2246,8 @@ export function ProviderLiveManagementBoard() {
         </article>
       </section>
 
-      <section className="grid-three">
-        <article className="card">
-          <h2>{jobs.length}</h2>
-          <p>{i18n.t("provider_live.metrics.open_jobs")}</p>
-        </article>
-        <article className="card">
-          <h2>{totalAssignedCrew}</h2>
-          <p>{i18n.t("provider_live.metrics.crew_assigned")}</p>
-        </article>
-        <article className="card">
-          <h2>{totalCrewGap}</h2>
-          <p>{i18n.t("provider_live.metrics.open_crew_slots")}</p>
-        </article>
-      </section>
 
       <section className="card">
-        <span className="eyebrow">{i18n.t("provider_live.calendar.eyebrow")}</span>
         <h2>{i18n.t("provider_live.calendar.title")}</h2>
         <p>{i18n.t("provider_live.calendar.body")}</p>
         {calendarSubscription ? (
@@ -2301,18 +2265,18 @@ export function ProviderLiveManagementBoard() {
                 </a>
               ))}
             </div>
-            <div className="stack-md" style={{ paddingTop: "1rem" }}>
+            <div className="stack-md u-pt-4">
               {calendarSubscription.instructions.map((instruction) => (
                 <p key={instruction}>{instruction}</p>
               ))}
-              <div className="stack-sm" style={{ paddingBottom: 0 }}>
+              <div className="stack-sm u-pb-0">
                 {calendarSubscription.actions.map((action) => (
                   <p key={`${action.platform}-helper`}>{action.label}: {action.helperText}</p>
                 ))}
               </div>
             </div>
             {calendarOverview ? (
-              <div className="stack-md" style={{ paddingTop: "1rem" }}>
+              <div className="stack-md u-pt-4">
                 {calendarHealth ? (
                   <article className="list-panel">
                     <strong>{i18n.t("provider_live.calendar.health", { status: formatCalendarHealthLabel(i18n, calendarHealth.status) })}</strong>
@@ -2332,7 +2296,7 @@ export function ProviderLiveManagementBoard() {
                         conflicts: calendarHealth.conflictingYardmatchJobCount
                       })}
                     </p>
-                    <div className="stack-sm" style={{ paddingBottom: 0 }}>
+                    <div className="stack-sm u-pb-0">
                       {calendarHealth.notes.map((note) => (
                         <p key={note}>{note}</p>
                       ))}
@@ -2350,7 +2314,7 @@ export function ProviderLiveManagementBoard() {
                     <div className="grid-two">
                       {dispatchDays.map((day) => (
                         <article className="card" key={day.dateIso}>
-                          <div className="chip-row" style={{ justifyContent: "space-between" }}>
+                          <div className="chip-row u-justify-between">
                             <span>{day.dayLabel}</span>
                             <span>{formatRouteStatusLabel(i18n, day.routeStatus)}</span>
                           </div>
@@ -2429,7 +2393,7 @@ export function ProviderLiveManagementBoard() {
             ) : null}
           </>
         ) : null}
-        <div className="stack-md" style={{ paddingTop: "1.25rem" }}>
+        <div className="stack-md u-pt-5">
           {(calendarHealth?.staleSubscriptionCount ?? 0) > 0 || (calendarHealth?.erroredSubscriptionCount ?? 0) > 0 ? (
             <div className="cta-row">
               <button
@@ -2619,7 +2583,6 @@ export function ProviderLiveManagementBoard() {
       <WorkspaceSection id="provider-retention" title={i18n.t("workspace.retention")}>
       {retentionProgram ? (
         <section className="card">
-          <span className="eyebrow">{i18n.t("provider_live.retention.eyebrow")}</span>
           <h2>{i18n.t("provider_live.retention.title")}</h2>
           <p>{retentionProgram.promise}</p>
           <div className="provider-route-summary" aria-label={i18n.t("provider_live.retention.summary_aria")}>
@@ -2642,13 +2605,7 @@ export function ProviderLiveManagementBoard() {
           </div>
           <p>{retentionProgram.eligibilityRule}</p>
           <p>
-            {i18n.t("provider_live.retention.fee_detail", {
-              finderFee: i18n.formatCurrency(retentionProgram.finderFeeCents),
-              jobFee: i18n.formatCurrency(retentionProgram.completedJobFeeCents, "USD", {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2
-              })
-            })}
+            {i18n.t("provider_live.retention.fee_detail")}
           </p>
           {retentionProgram.relationships.length > 0 ? (
             <ul className="timeline">

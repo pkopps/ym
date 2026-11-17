@@ -1,5 +1,62 @@
 # Engineer Checkpoint: Provider Finder-Fee Retention Promise
 
+## Current checkpoint: copy cut across non-ops screens
+
+- Updated: November 11, 2026 (UTC).
+- Branch and commit: `claude/remove-self-explanatory-copy-otfrru`; see the PR for the commit.
+- Completed: "Copy rules" added to `AGENTS.md`. Swept customer web, provider web, crew web, auth and provider-mobile screens: removed eyebrows, helper and description lines that restate headings, and the metric tiles on the provider board, crew dashboard, crew schedule, crew history, provider landing and local proof section; shortened what was left. Deleted 247 keys that were already unused and six unreferenced web components (`BookedBusinessResults`, `CrewHiringDashboard`, `CustomerListingsHero`, `HomeServiceScroller`, `ProviderMowerScrollStrip`, `ProviderSiteHeader`) with their keys. `en.json`, `es.json` and `pseudo.json` are in sync at 3,523 keys (was 4,018).
+- Word count (keys not starting with `ops` or `trust_policy.`): 16,709 before, 12,429 after, a 25.6% cut. The 40% target was not reached. 3,424 of those words are shared with customer-mobile or crew-mobile and were left alone; another 463 belong to ops screens with non-ops prefixes. On the remaining 12,822 words the cut is 33.4% (to 8,542).
+- In progress: none.
+- Remaining: provider screens whose strings live under `ops_auto.provider_management_board.*` and `ops_auto.provider_payments_board.*` (82 keys) were not touched because `ops_*` strings were out of scope. Reaching 40% needs either those plus the customer-mobile and crew-mobile strings, or removing functional text.
+- Blockers: none.
+- Changed workflows: none. Text and decorative tiles only; no layout fixes.
+- Validation: `npm run typecheck`, `npm run lint`, `npm run i18n:validate` (3,523 keys), `npm run experience-map:validate`, `npm run test:api` (420 passed, 16 skipped, 0 failed), `npm run build:provider-mobile` (Expo export) passed. `npm run test:web:smoke`: 61 of 61, run through a local config that points Playwright at the preinstalled Chromium; ten spec files had assertions updated to the new copy.
+- Known defects: none found. Layout left empty or unbalanced by the removals is listed in the PR description.
+- Screenshot paths: `reports/agent-checkpoints/engineer/copy-cut-2026-11/*-{desktop,mobile}.png` (1440x900 and 390x844 viewports, full page), 39 screens. Provider-mobile screens were not captured: the exported web build stops at session restore because secure storage is native-only.
+- Recommended next task: decide whether the shared customer-mobile and crew-mobile strings and the `ops_auto.provider_*` strings can be cut, then rebalance the provider landing hero.
+
+## Current checkpoint: Vercel staging build and login follow-ups
+
+- Updated: November 10, 2026 (UTC).
+- Branch and commit: `claude/launch-scope-chunk-c-copy-9j6dml`, restarted from `bed4e06`; see the PR for the commit.
+- Completed: `apps/web/vercel.json` sets the Vercel build command to `cd ../.. && npm run prisma:generate && npm run typecheck && npm run build:web`, replacing the dashboard command `cd ../.. && npm run build:api && npm run build:web` that has failed every staging build. `STAGING_DEPLOYMENT.md` explains it. `PAGE_FLOW.md`, its login screenshots and the generated flow diagrams now show the single `/login` page and the staff page; the three role-login screenshots are gone. Removed `hedge-trimmer.png` and `string-trimmer.png`, which only the old login illustration used.
+- In progress: none.
+- Remaining: the PR's own Vercel preview is the first real test of the new build command. The other `PAGE_FLOW.md` screenshots predate recent work (for example `/crew`) and were not retaken. `gutter-cleaning.png` and `mulch-refresh.png` were already unreferenced before the login change and were kept.
+- Blockers: none.
+- Changed workflows: none for users. Staging builds no longer compile `apps/api` separately; `npm run typecheck` (`tsc -b`) type-checks it and builds the workspace packages the web app imports.
+- Validation: reproduced the Vercel failure locally from a clean state (no package `dist/`, no generated Prisma client): the old command failed with 341 TypeScript errors (`TS6305` and implicit `any`), the new command built in 53 seconds with none. `npm run lint` and `npm run typecheck` passed; `tests/web/smoke.spec.ts` and `tests/web/login.spec.ts` passed (15).
+- Known defects: none found.
+- Screenshot paths: `docs/page-flow-screenshots/{login,login-ops}.png` (1440x1200) and `docs/page-flow-diagrams/signup-login-flow.png`.
+- Recommended next task: confirm the staging deployment goes green after merge, then run the hosted acceptance workflow.
+
+## Current checkpoint: single web login page
+
+- Updated: November 9, 2026 (UTC).
+- Branch and commit: `claude/launch-scope-chunk-c-copy-9j6dml`, restarted from `3d4ecd1`; see the PR for the implementation commit.
+- Completed: `/login` is one form (email, password, Log in, "Forgot password?", Google, Apple, "Create an account") that redirects by the role the API returns and still validates `returnTo` through `getRoleRedirectPath`. `/login/customer`, `/login/provider` and `/login/crew` are HTTP 307 redirects to `/login` (in `proxy.ts`, locale and `returnTo` kept). `/login/ops` is a separate "Staff log in" page that refuses non-staff accounts, and `/login` refuses staff accounts; neither keeps a session in that case. The story column, second intro, helper lines and Back button are gone, with their CSS, the illustration list and 108 locale keys. Social login no longer sends a role: the API signs the person in with the role the existing account has. Provider-mobile sign-in shows one title and no product copy, with email, password and code input hints.
+- In progress: none.
+- Remaining: `PAGE_FLOW.md` and its screenshots still describe the role picker (generated doc, not regenerated). Social sign-in still cannot complete for accounts with two-factor on; they are told to use email and password, as before.
+- Blockers: none. Live Google and Apple sign-in were not exercised; the provider exchange is stubbed in the API tests.
+- Changed workflows: one login address for customers, providers and crew; the home header "Log in" is a link instead of a three-item menu. API: `role` is optional on `GET /api/auth/google/start` and `/apple/start` when `mode=login`; a login that names a role (the mobile apps) still has to match, sign-up still requires one, and staff accounts are never signed in through a social provider.
+- Validation: `npm run typecheck`, `npm run lint`, `npm run i18n:validate` (3,983 keys) and `npm run experience-map:validate` passed. `npm run test:web:smoke`: 58 of 58, including seven new cases in `tests/web/login.spec.ts` (page contents and field hints, role redirect for all three roles, `returnTo`, former URLs, two-factor, password reset, staff-only page). `npm run test:api`: 395 passed, 15 database-only skipped, 1 failed. The failure is `ops support queue includes weather or route delay exception scripts...`, which also fails on unchanged `main` when run late in the UTC day because its fixture crosses a service-day boundary. Five new social-login cases in `auth-controller.test.ts` pass. Provider-mobile Expo export passed. Not run: Postgres integration, simulator.
+- Known defects: none found in the changed flow. A failed reset attempt hides the "Reset started" panel (existing behaviour).
+- Screenshot paths: `reports/agent-checkpoints/engineer/latest/single-login/{login,staff-login}-{desktop,mobile}.png` (1440x900 and 390x844), written by the login spec. This folder is git-ignored, so the images are local evidence only.
+- Recommended next task: regenerate `PAGE_FLOW.md`, then fix the time-of-day dependent API test.
+
+## Current checkpoint: launch-scope chunk C (copy)
+
+- Updated: November 9, 2026 (UTC).
+- Branch and commit: `claude/launch-scope-chunk-c-copy-9j6dml`, based on `c490ff2`; see the PR for the implementation commit.
+- Completed: English and Spanish copy now states the October 14 model. Fees: one-time finder fee of $75, $110 or $150 by property size after the first completed job with a new customer, first customer relationship free, no per-job fee, customers pay the provider directly, optional Pro $49/month and Teams $99/month (`auth_provider.economics.*`, `provider_landing.pricing.*`, `provider_landing.retention.note`, provider dashboard retention detail on web and provider mobile, and the API retention eligibility sentence). Payouts: removed from provider login, sign-up, landing, About, help and default metadata, and provider-mobile auth/support descriptions. Crew: landing, About, login, crew sign-up and crew-app copy describe crew as the provider's own team; "Find crew members", the provider "For crews" link and the unused provider header crew entries render only with the crew marketplace flag on; the home-header account menu hides Payments with the payments flag off.
+- In progress: none.
+- Remaining: chunk B (finder-fee policy and billing). Until it ships no code charges the fees the copy describes, and the retention board still counts "Finder fee covered" from recorded settlements, which do not exist with payments off. Provider staffing copy that describes automatic crew matching (`provider_live.staffing.body`, `provider_live.crew.no_matches_*`, provider-mobile equivalents) was left because it describes behaviour that still runs. Customer payment and refund strings inside flag-gated checkout screens were left as instructed.
+- Blockers: none. Launch counsel should review the `trust_policy.*` lines listed in the PR description.
+- Changed workflows: none functionally. About-page crew buttons and the crew login secondary button now go to crew login and Help instead of public crew openings.
+- Validation: `npm run typecheck`, `npm run lint`, `npm run i18n:validate` (4,087 keys) passed; `npm run test:api` 391 passed, 15 database-only skipped; `npm run test:web:smoke` 51 of 51 passed (local flags default on). Screenshot pass ran against API and web started with both launch flags off; the four pages had no "$30", "6.99", payout, deduction or crew-hiring text and no horizontal overflow at either size. Not run: Expo export for provider mobile, Postgres integration.
+- Known defects: with payments on locally, settlement code still applies the old $30 and $6.99 policy (chunk B). No deployed path can charge it with the flag off; see the PR description for the trace and the one webhook caveat.
+- Screenshot paths: `reports/agent-checkpoints/engineer/latest/launch-scope-copy/{provider,provider-pricing,provider-signup,provider-login,home}-{desktop,mobile}.png` (1440x900 and 390x844, flags off).
+- Recommended next task: chunk B, then replace the hardcoded fee amounts in copy with values from the new policy.
+
 ## Current checkpoint: cross-task main consolidation
 
 - Updated: September 18, 2026.

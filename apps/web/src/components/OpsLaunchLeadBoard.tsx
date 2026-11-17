@@ -375,13 +375,13 @@ export function OpsLaunchLeadBoard() {
             />
           </label>
         </div>
-        <div className="cta-row" style={{ marginTop: "1rem" }}>
+        <div className="cta-row u-mt-4">
           <button className="button" disabled={isWorking} onClick={() => void createLead()} type="button">
             {isWorking ? "Saving..." : "Create lead"}
           </button>
         </div>
       </article>
-      <div className="stack-lg" style={{ paddingBottom: 0 }}>
+      <div className="stack-lg u-pb-0">
         {leads.length === 0 ? (
           <article className="card">
             <p>{i18n.t("ops_auto.ops_launch_lead_board.no_launch_leads_yet_j3ei4d")}</p>
@@ -396,7 +396,7 @@ export function OpsLaunchLeadBoard() {
 
             return (
               <article className="card" key={item.lead.id}>
-                <div className="cta-row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
+                <div className="cta-row u-justify-between u-items-start">
                   <div>
                     <span className="eyebrow">{item.lead.status.replaceAll("-", " ")}</span>
                     <h3>{item.lead.contactName}</h3>
@@ -406,7 +406,7 @@ export function OpsLaunchLeadBoard() {
                       {` • prefers ${item.lead.preferredContactMethod}`}
                     </p>
                   </div>
-                  <div style={{ textAlign: "right" }}>
+                  <div className="u-text-right">
                     <p>{i18n.t("ops_auto.ops_launch_lead_board.created_qhn9ko")} {formatDateTime(item.lead.createdAt)}</p>
                     <p>{item.hoursSinceCreated} {i18n.t("ops_auto.ops_launch_lead_board.hours_old_gt6652")}</p>
                     <p>
@@ -528,7 +528,7 @@ export function OpsLaunchLeadBoard() {
                               <div className="stack-sm">
                                 {audienceTemplates.map((template) => (
                                   <article className="card" key={`${item.lead.id}-${template.key}`}>
-                                    <div className="cta-row" style={{ justifyContent: "space-between", gap: "1rem" }}>
+                                    <div className="cta-row u-justify-between u-gap-4">
                                       <div>
                                         <strong>{template.title}</strong>
                                         <p>
@@ -564,7 +564,7 @@ export function OpsLaunchLeadBoard() {
                 {item.suggestedBookingMatches.length > 0 ? (
                   <div className="stack-sm">
                     <p>{i18n.t("ops_auto.ops_launch_lead_board.possible_booking_matches_x52cdf")}</p>
-                    <div className="cta-row" style={{ flexWrap: "wrap" }}>
+                    <div className="cta-row u-wrap">
                       {item.suggestedBookingMatches.map((match) => (
                         <button
                           className="button button-secondary"
@@ -705,7 +705,7 @@ export function OpsLaunchLeadBoard() {
                   </label>
                 </div>
 
-                <div className="cta-row" style={{ marginTop: "1rem" }}>
+                <div className="cta-row u-mt-4">
                   <button className="button" disabled={isWorking} onClick={() => void saveLead(item)} type="button">
                     {isWorking ? "Saving..." : "Save lead"}
                   </button>

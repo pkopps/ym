@@ -1,4 +1,5 @@
-import type { ZipServiceMinimumRecord } from "@yardmatch/contracts";
+import type { FinderFeeChargeRecord, ProviderBillingAccountRecord, ZipServiceMinimumRecord } from "@yardmatch/contracts";
+import type { FinderFeeChargeQuery } from "./finderFeeRecords";
 import type { NotificationHealthSnapshot } from "./notificationHealth";
 import type { CustomerReferralRecord } from "./customerReferrals";
 import {
@@ -54,6 +55,12 @@ export interface TrustedDeviceRecord {
   lastSeenAt: string;
   expiresAtIso: string;
   revokedAt?: string;
+}
+
+export interface UpcomingBookingsQuery {
+  afterIso: string;
+  statuses: Booking["status"][];
+  providerId?: string;
 }
 
 export interface AuthIdentityRecord {
@@ -134,11 +141,57 @@ export interface BookingPageQuery {
 
 export type ClaimedNotificationDelivery = NotificationDeliveryRecord & { leaseToken: string };
 
+export interface CompletedBookingAreaSummary {
+  providerId: string;
+  city: string;
+  state: string;
+  category: Booking["category"];
+  completedBookingCount: number;
+  /** Completed (or, with no completion time, scheduled to end) at or after the requested instant. */
+  recentCompletedBookingCount: number;
+  firstScheduledStartIso: string;
+}
+
+export interface OpsOverviewBookingSummary {
+  totalBookings: number;
+  requestedBookings: number;
+  /** Requested at or after the given instant, in any status. */
+  requestedSinceCount: number;
+  /** Bookings with an active exception, in any status. */
+  activeExceptionCount: number;
+  disputedAfterCompletionCount: number;
+  /** One row per service city, state, postal code (as stored) and category, ordered by each group's earliest booking. */
+  pockets: Array<{
+    city: string;
+    state: string;
+    postalCode: string;
+    category: Booking["category"];
+    /** Completed or refunded. */
+    completedCount: number;
+    /** Neither completed, refunded nor cancelled. */
+    activeCount: number;
+    activeExceptionCount: number;
+  }>;
+}
+
 export interface MarketplaceRepository {
   listZipServiceMinimums(postalCode: string): Promise<ZipServiceMinimumRecord[]>;
   saveZipServiceMinimum(record: ZipServiceMinimumRecord): Promise<ZipServiceMinimumRecord>;
+  findProviderBillingAccount(providerId: string): Promise<ProviderBillingAccountRecord | undefined>;
+  upsertProviderBillingAccount(account: ProviderBillingAccountRecord): Promise<ProviderBillingAccountRecord>;
+  findFinderFeeChargeById(chargeId: string): Promise<FinderFeeChargeRecord | undefined>;
+  findFinderFeeChargeByRelationship(customerId: string, providerId: string): Promise<FinderFeeChargeRecord | undefined>;
+  /** Throws FinderFeeRelationshipConflictError when a unique constraint already holds the relationship. */
+  createFinderFeeCharge(record: FinderFeeChargeRecord): Promise<FinderFeeChargeRecord>;
+  updateFinderFeeCharge(chargeId: string, updates: Partial<FinderFeeChargeRecord>): Promise<FinderFeeChargeRecord | undefined>;
+  listFinderFeeCharges(query: FinderFeeChargeQuery): Promise<FinderFeeChargeRecord[]>;
   /** Serialize a bounded operation across API instances; database writes use one transaction. */
   withLock<T>(key: string, work: (repository: MarketplaceRepository) => Promise<T>): Promise<T>;
+  /** Like `withLock`, but returns `{ acquired: false }` without running `work` when another holder has the lock. Never waits. */
+  tryWithLock<T>(
+    key: string,
+    work: (repository: MarketplaceRepository) => Promise<T>
+  ): Promise<{ acquired: true; value: T } | { acquired: false }>;
   getSecurityState(key: string): Promise<Record<string, unknown> | undefined>;
   putSecurityState(key: string, value: Record<string, unknown>, expiresAt: string): Promise<void>;
   createRecurringPlanWithBooking(plan: RecurringServicePlan, booking: Booking): Promise<Booking>;
@@ -147,10 +200,16 @@ export interface MarketplaceRepository {
   createCrewMember(crewMember: CrewMemberProfile, passwordHash?: string): Promise<CrewMemberProfile>;
   createOpsUser(opsUser: OpsProfile, passwordHash?: string): Promise<OpsProfile>;
   listProviders(): Promise<ProviderProfile[]>;
+  listProvidersByIds(providerIds: string[]): Promise<ProviderProfile[]>;
+  /**
+   * Providers in one verification status, oldest account first, then by id. `listProviders` promises no order
+   * (Postgres returns whatever the table scan yields), so this one is fixed instead of copied.
+   */
+  listProvidersByVerificationStatus(status: ProviderProfile["verificationStatus"]): Promise<ProviderProfile[]>;
   searchProvidersPage(query: ProviderSearchQuery): Promise<RepositoryPage<ProviderProfile>>;
   getProviderBookingMetrics(providerIds: string[], address: ProviderSearchQuery["address"]): Promise<ProviderBookingMetrics[]>;
   listSearchSlots(providerIds: string[], minimumDurationMinutes?: number, range?: { startIso: string; endIso: string }): Promise<AvailabilitySlot[]>;
-  listScopedBookings(query: { providerId?: string; customerId?: string; endAfter?: string; excludeStatuses?: string[] }): Promise<Booking[]>;
+  listScopedBookings(query: { providerId?: string; customerId?: string; endAfter?: string; statuses?: string[]; excludeStatuses?: string[] }): Promise<Booking[]>;
   getRetentionEvidence(bookingIds: string[]): Promise<{ tickets: SupportTicket[]; reviews: ProviderReview[]; settlements: BookingFinancialSettlement[] }>;
   getProviderClientProperties(providerId: string, nowIso: string): Promise<ProviderClientProperty[]>;
   listCustomers(customerIds?: string[]): Promise<CustomerProfile[]>;
@@ -173,8 +232,41 @@ export interface MarketplaceRepository {
   createBooking(booking: Booking): Promise<Booking>;
   listBookings(): Promise<Booking[]>;
   listBookingsPage(query: BookingPageQuery): Promise<RepositoryPage<Booking>>;
+  /** The bookings with these ids, in the same order as `listBookings`. */
   listBookingsByIds(bookingIds: string[]): Promise<Booking[]>;
+  /**
+   * The bookings crew reconciliation for one provider can depend on: every booking of that provider, plus any
+   * provider's bookings that end after `endAfterIso`. Same order as `listBookings`.
+   */
+  listBookingsForCrewStaffing(query: { providerId: string; endAfterIso: string }): Promise<Booking[]>;
+  /**
+   * Completed bookings counted per provider, service city and state (as stored) and category. Rows are ordered by
+   * each group's earliest booking, the order `listBookings` would first reach them.
+   */
+  summarizeCompletedBookingsByArea(recentSinceIso: string): Promise<CompletedBookingAreaSummary[]>;
+  /** Completed bookings with at least one photo cleared for marketing use, in the same order as `listBookings`. */
+  listCompletedBookingsWithMarketingPhotos(): Promise<Booking[]>;
+  /** One recurring plan's bookings, in the same order as `listBookings`. */
+  listBookingsForRecurringPlan(recurringPlanId: string): Promise<Booking[]>;
+  /** Bookings starting after `afterIso` in one of `statuses`, in the same order as `listBookings`. */
+  listUpcomingBookings(query: UpcomingBookingsQuery): Promise<Booking[]>;
+  /** Booking counts for the ops overview, and bookings counted per service address and category. */
+  summarizeBookingsForOpsOverview(requestedSinceIso: string): Promise<OpsOverviewBookingSummary>;
+  /** Every booking of these providers, in the same order as `listBookings`. */
+  listBookingsForProviders(providerIds: string[]): Promise<Booking[]>;
+  /** Every booking in one of these statuses, in the same order as `listBookings`. */
+  listBookingsByStatuses(statuses: Booking["status"][]): Promise<Booking[]>;
+  countBookings(): Promise<number>;
+  /**
+   * Totals for bookings no payment was ever recorded on: the summed price of completed ones, and how many are
+   * disputed after completion.
+   */
+  summarizeBookingsWithoutPayments(): Promise<{ completedTotalCents: number; disputedAfterCompletionCount: number }>;
+  /** Bookings made by any of these customers or linked to any of these launch leads, in the same order as `listBookings`. */
+  listBookingsForCustomersOrLaunchLeads(query: { customerIds: string[]; launchLeadIds: string[] }): Promise<Booking[]>;
   findBookingById(bookingId: string): Promise<Booking | undefined>;
+  /** The booking holding the evidence entry with this id: the one `listBookings` would reach first. */
+  findBookingByEvidenceId(evidenceId: string): Promise<Booking | undefined>;
   updateBooking(bookingId: string, updates: Partial<Booking>, expectedVersion?: number): Promise<Booking | undefined>;
   createRecurringServicePlan(plan: RecurringServicePlan): Promise<RecurringServicePlan>;
   listRecurringServicePlans(): Promise<RecurringServicePlan[]>;
@@ -185,11 +277,21 @@ export interface MarketplaceRepository {
   ): Promise<RecurringServicePlan | undefined>;
   createCrewMatch(match: CrewMatchCandidate): Promise<CrewMatchCandidate>;
   listCrewMatches(): Promise<CrewMatchCandidate[]>;
+  /** Matches for the given bookings, in the same order as `listCrewMatches`. */
   listCrewMatchesForBookings(bookingIds: string[], crewMemberId?: string): Promise<CrewMatchCandidate[]>;
+  /** Every match held by any of these crew members, with any provider, in the same order as `listCrewMatches`. */
+  listCrewMatchesForCrewMembers(crewMemberIds: string[]): Promise<CrewMatchCandidate[]>;
+  /** One crew member's matches, in the same order as `listCrewMatches`. */
+  listCrewMatchesForCrewMember(crewMemberId: string): Promise<CrewMatchCandidate[]>;
   updateCrewMatch(matchId: string, updates: Partial<CrewMatchCandidate>): Promise<CrewMatchCandidate | undefined>;
   findCrewMatchById(matchId: string): Promise<CrewMatchCandidate | undefined>;
   createProviderReview(review: ProviderReview): Promise<ProviderReview>;
   listProviderReviews(providerId: string): Promise<ProviderReview[]>;
+  /**
+   * The `limit` newest reviews across the given providers, newest first, plus any review created at the same
+   * instant as the last of them, so the caller can break that tie the way it always has.
+   */
+  listLatestProviderReviews(providerIds: string[], limit: number): Promise<ProviderReview[]>;
   findProviderReviewById(reviewId: string): Promise<ProviderReview | undefined>;
   findProviderReviewByBookingId(bookingId: string): Promise<ProviderReview | undefined>;
   updateProviderReview(reviewId: string, updates: Partial<ProviderReview>): Promise<ProviderReview | undefined>;
@@ -204,11 +306,15 @@ export interface MarketplaceRepository {
     change: BookingAddressChangeRequest
   ): Promise<Booking | undefined>;
   findProviderById(providerId: string): Promise<ProviderProfile | undefined>;
+  /** The provider whose calendar feed token is `feedToken`: the one `listProviders` would reach first. */
+  findProviderByCalendarFeedToken(feedToken: string): Promise<ProviderProfile | undefined>;
   updateProvider(providerId: string, updates: Partial<ProviderProfile>): Promise<ProviderProfile | undefined>;
   createPayment(payment: PaymentRecord): Promise<PaymentRecord>;
   findPaymentById(paymentId: string): Promise<PaymentRecord | undefined>;
   findPaymentByCheckoutSessionId(checkoutSessionId: string): Promise<PaymentRecord | undefined>;
+  findPaymentByProcessorPaymentIntentId(paymentIntentId: string): Promise<PaymentRecord | undefined>;
   listPayments(): Promise<PaymentRecord[]>;
+  /** Payments on these bookings, most recently updated first. */
   listPaymentsForBookingIds(bookingIds: string[]): Promise<PaymentRecord[]>;
   updatePayment(paymentId: string, updates: Partial<PaymentRecord>): Promise<PaymentRecord | undefined>;
   settleBookingFinancials(
@@ -280,6 +386,8 @@ export interface MarketplaceRepository {
   getNotificationPreferences(recipientId: string): Promise<NotificationPreferences | undefined>;
   upsertNotificationPreferences(preferences: NotificationPreferences): Promise<NotificationPreferences>;
   createNotificationDelivery(delivery: NotificationDeliveryRecord): Promise<NotificationDeliveryRecord>;
+  /** Queues several deliveries in one write. */
+  createNotificationDeliveries(deliveries: NotificationDeliveryRecord[]): Promise<void>;
   claimNotificationDeliveries(limit: number, nowIso: string, leaseSeconds: number): Promise<ClaimedNotificationDelivery[]>;
   completeNotificationDelivery(deliveryId: string, leaseToken: string, updates: Partial<NotificationDeliveryRecord>): Promise<NotificationDeliveryRecord | undefined>;
   countDueNotificationDeliveries(nowIso: string): Promise<number>;
@@ -327,6 +435,11 @@ export interface MarketplaceRepository {
     subject: string
   ): Promise<AuthIdentityRecord | undefined>;
   findAuthIdentityByUserId(userId: string): Promise<AuthIdentityRecord | undefined>;
+  /**
+   * The email and phone notifications go to for a user in this role, or undefined when the user has no profile
+   * for the role. The same answer as loading the full customer, provider, ops or crew profile, in one read.
+   */
+  findNotificationContact(userId: string, role: AuthIdentityRecord["role"]): Promise<{ email: string; phone: string } | undefined>;
   updateAuthIdentity(
     userId: string,
     updates: Partial<AuthIdentityRecord>

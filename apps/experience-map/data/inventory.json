@@ -1,10 +1,10 @@
 {
-  "generatedAt": "2026-10-05T02:20:37.554Z",
+  "generatedAt": "2026-11-09T22:21:22.039Z",
   "counts": {
-    "webRoutes": 44,
+    "webRoutes": 41,
     "mobileScreens": 15,
     "states": 21,
-    "edges": 94
+    "edges": 88
   },
   "nodes": [
     {
@@ -18,7 +18,7 @@
         "thumbnail": "captures/thumbnails/web-.webp",
         "full": "captures/full/web-.png",
         "status": "test-artifact",
-        "capturedAt": "2026-10-05T02:20:37.205Z",
+        "capturedAt": "2026-11-09T22:21:21.692Z",
         "source": "tests/web → honest-launch-home-desktop.png"
       }
     },
@@ -363,34 +363,6 @@
       }
     },
     {
-      "id": "web:/login/crew",
-      "label": "Crew",
-      "kind": "web",
-      "role": "public",
-      "url": "/login/crew",
-      "source": "apps/web/src/app/login/crew/page.tsx",
-      "capture": {
-        "thumbnail": "captures/thumbnails/web-login-crew.webp",
-        "full": "captures/full/web-login-crew.png",
-        "status": "captured",
-        "capturedAt": "2026-09-30T02:46:06.494Z"
-      }
-    },
-    {
-      "id": "web:/login/customer",
-      "label": "Customer",
-      "kind": "web",
-      "role": "public",
-      "url": "/login/customer",
-      "source": "apps/web/src/app/login/customer/page.tsx",
-      "capture": {
-        "thumbnail": "captures/thumbnails/web-login-customer.webp",
-        "full": "captures/full/web-login-customer.png",
-        "status": "captured",
-        "capturedAt": "2026-09-30T02:46:08.554Z"
-      }
-    },
-    {
       "id": "web:/login/ops",
       "label": "Ops",
       "kind": "web",
@@ -402,20 +374,6 @@
         "full": "captures/full/web-login-ops.png",
         "status": "captured",
         "capturedAt": "2026-09-30T02:46:10.680Z"
-      }
-    },
-    {
-      "id": "web:/login/provider",
-      "label": "Provider",
-      "kind": "web",
-      "role": "public",
-      "url": "/login/provider",
-      "source": "apps/web/src/app/login/provider/page.tsx",
-      "capture": {
-        "thumbnail": "captures/thumbnails/web-login-provider.webp",
-        "full": "captures/full/web-login-provider.png",
-        "status": "captured",
-        "capturedAt": "2026-09-30T02:46:12.763Z"
       }
     },
     {
@@ -835,7 +793,7 @@
         "thumbnail": "captures/thumbnails/provider-approved.webp",
         "full": "captures/full/provider-approved.png",
         "status": "test-artifact",
-        "capturedAt": "2026-10-05T02:20:37.533Z",
+        "capturedAt": "2026-11-09T22:21:22.024Z",
         "source": "tests/web → provider-onboarding-verified-desktop.png"
       }
     },
@@ -873,7 +831,7 @@
         "thumbnail": "captures/thumbnails/customer-recovery.webp",
         "full": "captures/full/customer-recovery.png",
         "status": "test-artifact",
-        "capturedAt": "2026-10-05T02:20:37.481Z",
+        "capturedAt": "2026-11-09T22:21:21.981Z",
         "source": "tests/web → booking-replacement-consent-desktop.png"
       }
     },
@@ -895,7 +853,7 @@
         "thumbnail": "captures/thumbnails/customer-top-matches.webp",
         "full": "captures/full/customer-top-matches.png",
         "status": "test-artifact",
-        "capturedAt": "2026-10-05T02:20:37.240Z",
+        "capturedAt": "2026-11-09T22:21:21.733Z",
         "source": "tests/web → customer-top-matches-desktop.png"
       }
     },
@@ -909,7 +867,7 @@
         "thumbnail": "captures/thumbnails/customer-directory.webp",
         "full": "captures/full/customer-directory.png",
         "status": "test-artifact",
-        "capturedAt": "2026-10-05T02:20:37.273Z",
+        "capturedAt": "2026-11-09T22:21:21.772Z",
         "source": "tests/web → customer-directory-desktop.png"
       }
     },
@@ -923,7 +881,7 @@
         "thumbnail": "captures/thumbnails/customer-quote.webp",
         "full": "captures/full/customer-quote.png",
         "status": "test-artifact",
-        "capturedAt": "2026-10-05T02:20:37.336Z",
+        "capturedAt": "2026-11-09T22:21:21.848Z",
         "source": "tests/web → customer-quote-desktop.png"
       }
     },
@@ -977,7 +935,7 @@
         "thumbnail": "captures/thumbnails/customer-dispute.webp",
         "full": "captures/full/customer-dispute.png",
         "status": "test-artifact",
-        "capturedAt": "2026-10-05T02:20:37.380Z",
+        "capturedAt": "2026-11-09T22:21:21.889Z",
         "source": "tests/web → complaint-form-desktop.png"
       }
     },
@@ -1038,7 +996,7 @@
         "thumbnail": "captures/thumbnails/crew-assignment.webp",
         "full": "captures/full/crew-assignment.png",
         "status": "test-artifact",
-        "capturedAt": "2026-10-05T02:20:37.418Z",
+        "capturedAt": "2026-11-09T22:21:21.926Z",
         "source": "tests/web → crew-assignment-accepted-desktop.png"
       }
     },
@@ -1052,7 +1010,7 @@
         "thumbnail": "captures/thumbnails/ops-case.webp",
         "full": "captures/full/ops-case.png",
         "status": "test-artifact",
-        "capturedAt": "2026-10-05T02:20:37.442Z",
+        "capturedAt": "2026-11-09T22:21:21.949Z",
         "source": "tests/web → complaint-review-desktop.png"
       }
     }
@@ -1309,13 +1267,13 @@
       "id": "edge-25"
     },
     {
-      "from": "web:/login/customer",
+      "from": "web:/login",
       "to": "web:/customer/dashboard",
       "action": "Log in",
       "role": "customer",
-      "state": "existing account",
+      "state": "customer account",
       "evidence": "test-verified",
-      "source": "tests/web/customer-booking-golden-path.spec.ts",
+      "source": "tests/web/login.spec.ts",
       "id": "edge-26"
     },
     {
@@ -1459,13 +1417,13 @@
       "id": "edge-40"
     },
     {
-      "from": "web:/login/provider",
+      "from": "web:/login",
       "to": "web:/provider/management",
       "action": "Log in",
       "role": "provider",
-      "state": "approved account",
+      "state": "provider account",
       "evidence": "test-verified",
-      "source": "tests/web/provider-job-lifecycle.spec.ts",
+      "source": "tests/web/login.spec.ts",
       "id": "edge-41"
     },
     {
@@ -1519,13 +1477,13 @@
       "id": "edge-46"
     },
     {
-      "from": "web:/login/crew",
+      "from": "web:/login",
       "to": "web:/crew",
       "action": "Log in",
       "role": "crew",
-      "state": "accepted crew",
+      "state": "crew account",
       "evidence": "test-verified",
-      "source": "tests/web/crew-assignment-flow.spec.ts",
+      "source": "tests/web/login.spec.ts",
       "id": "edge-47"
     },
     {
@@ -1630,33 +1588,23 @@
     },
     {
       "from": "web:/login",
-      "to": "web:/login/customer",
-      "action": "Customer login",
+      "to": "web:/auth",
+      "action": "Create an account",
       "role": "public",
       "state": "",
-      "evidence": "code-inferred",
-      "source": "apps/web/src/app/login/page.tsx",
+      "evidence": "test-verified",
+      "source": "tests/web/login.spec.ts",
       "id": "edge-58"
     },
     {
       "from": "web:/login",
-      "to": "web:/login/provider",
-      "action": "Provider login",
+      "to": "web:/auth/complete",
+      "action": "Continue with social login",
       "role": "public",
-      "state": "",
+      "state": "social authorization returns",
       "evidence": "code-inferred",
-      "source": "apps/web/src/app/login/page.tsx",
+      "source": "apps/web/src/components/LoginCard.tsx",
       "id": "edge-59"
-    },
-    {
-      "from": "web:/login",
-      "to": "web:/login/crew",
-      "action": "Crew login",
-      "role": "public",
-      "state": "",
-      "evidence": "code-inferred",
-      "source": "apps/web/src/app/login/page.tsx",
-      "id": "edge-60"
     },
     {
       "from": "web:/auth/customer",
@@ -1666,7 +1614,7 @@
       "state": "social authorization returns",
       "evidence": "code-inferred",
       "source": "apps/web/src/components/AccountSignupForm.tsx",
-      "id": "edge-61"
+      "id": "edge-60"
     },
     {
       "from": "web:/auth/provider/create",
@@ -1676,7 +1624,7 @@
       "state": "social authorization returns",
       "evidence": "code-inferred",
       "source": "apps/web/src/components/AccountSignupForm.tsx",
-      "id": "edge-62"
+      "id": "edge-61"
     },
     {
       "from": "web:/auth/crew",
@@ -1686,47 +1634,7 @@
       "state": "social authorization returns",
       "evidence": "code-inferred",
       "source": "apps/web/src/components/AccountSignupForm.tsx",
-      "id": "edge-63"
-    },
-    {
-      "from": "web:/login/customer",
-      "to": "web:/auth/complete",
-      "action": "Continue with social login",
-      "role": "customer",
-      "state": "social authorization returns",
-      "evidence": "code-inferred",
-      "source": "apps/web/src/components/RoleLoginCard.tsx",
-      "id": "edge-64"
-    },
-    {
-      "from": "web:/login/provider",
-      "to": "web:/auth/complete",
-      "action": "Continue with social login",
-      "role": "provider",
-      "state": "social authorization returns",
-      "evidence": "code-inferred",
-      "source": "apps/web/src/components/RoleLoginCard.tsx",
-      "id": "edge-65"
-    },
-    {
-      "from": "web:/login/crew",
-      "to": "web:/auth/complete",
-      "action": "Continue with social login",
-      "role": "crew",
-      "state": "social authorization returns",
-      "evidence": "code-inferred",
-      "source": "apps/web/src/components/RoleLoginCard.tsx",
-      "id": "edge-66"
-    },
-    {
-      "from": "web:/login/ops",
-      "to": "web:/auth/complete",
-      "action": "Continue with social login",
-      "role": "ops",
-      "state": "social authorization returns",
-      "evidence": "code-inferred",
-      "source": "apps/web/src/components/RoleLoginCard.tsx",
-      "id": "edge-67"
+      "id": "edge-62"
     },
     {
       "from": "web:/auth/complete",
@@ -1736,7 +1644,7 @@
       "state": "social authorization complete",
       "evidence": "code-inferred",
       "source": "apps/web/src/app/auth/complete/page.tsx",
-      "id": "edge-68"
+      "id": "edge-63"
     },
     {
       "from": "web:/auth/complete",
@@ -1746,7 +1654,7 @@
       "state": "social authorization complete",
       "evidence": "code-inferred",
       "source": "apps/web/src/app/auth/complete/page.tsx",
-      "id": "edge-69"
+      "id": "edge-64"
     },
     {
       "from": "web:/auth/complete",
@@ -1756,7 +1664,7 @@
       "state": "social authorization complete",
       "evidence": "code-inferred",
       "source": "apps/web/src/app/auth/complete/page.tsx",
-      "id": "edge-70"
+      "id": "edge-65"
     },
     {
       "from": "web:/auth/complete",
@@ -1766,7 +1674,7 @@
       "state": "social authorization complete",
       "evidence": "code-inferred",
       "source": "apps/web/src/app/auth/complete/page.tsx",
-      "id": "edge-71"
+      "id": "edge-66"
     },
     {
       "from": "mobile:customer:auth",
@@ -1776,7 +1684,7 @@
       "state": "authenticated",
       "evidence": "code-inferred",
       "source": "apps/customer-mobile/src/App.tsx",
-      "id": "edge-72"
+      "id": "edge-67"
     },
     {
       "from": "mobile:customer:dashboard",
@@ -1786,7 +1694,7 @@
       "state": "authenticated",
       "evidence": "code-inferred",
       "source": "apps/customer-mobile/src/navigation/CustomerAppNavigator.tsx",
-      "id": "edge-73"
+      "id": "edge-68"
     },
     {
       "from": "mobile:customer:dashboard",
@@ -1796,7 +1704,7 @@
       "state": "authenticated",
       "evidence": "code-inferred",
       "source": "apps/customer-mobile/src/navigation/CustomerAppNavigator.tsx",
-      "id": "edge-74"
+      "id": "edge-69"
     },
     {
       "from": "mobile:customer:dashboard",
@@ -1806,7 +1714,7 @@
       "state": "authenticated",
       "evidence": "code-inferred",
       "source": "apps/customer-mobile/src/navigation/CustomerAppNavigator.tsx",
-      "id": "edge-75"
+      "id": "edge-70"
     },
     {
       "from": "mobile:provider:auth",
@@ -1816,7 +1724,7 @@
       "state": "authenticated",
       "evidence": "code-inferred",
       "source": "apps/provider-mobile/src/App.tsx",
-      "id": "edge-76"
+      "id": "edge-71"
     },
     {
       "from": "mobile:provider:dashboard",
@@ -1826,7 +1734,7 @@
       "state": "authenticated",
       "evidence": "code-inferred",
       "source": "apps/provider-mobile/src/navigation/ProviderAppNavigator.tsx",
-      "id": "edge-77"
+      "id": "edge-72"
     },
     {
       "from": "mobile:provider:dashboard",
@@ -1836,7 +1744,7 @@
       "state": "authenticated",
       "evidence": "code-inferred",
       "source": "apps/provider-mobile/src/navigation/ProviderAppNavigator.tsx",
-      "id": "edge-78"
+      "id": "edge-73"
     },
     {
       "from": "mobile:provider:dashboard",
@@ -1846,7 +1754,7 @@
       "state": "authenticated",
       "evidence": "code-inferred",
       "source": "apps/provider-mobile/src/navigation/ProviderAppNavigator.tsx",
-      "id": "edge-79"
+      "id": "edge-74"
     },
     {
       "from": "mobile:crew:auth",
@@ -1856,7 +1764,7 @@
       "state": "authenticated",
       "evidence": "code-inferred",
       "source": "apps/crew-mobile/src/App.tsx",
-      "id": "edge-80"
+      "id": "edge-75"
     },
     {
       "from": "mobile:crew:today",
@@ -1866,7 +1774,7 @@
       "state": "authenticated",
       "evidence": "code-inferred",
       "source": "apps/crew-mobile/src/navigation/CrewAppNavigator.tsx",
-      "id": "edge-81"
+      "id": "edge-76"
     },
     {
       "from": "mobile:crew:today",
@@ -1876,7 +1784,7 @@
       "state": "authenticated",
       "evidence": "code-inferred",
       "source": "apps/crew-mobile/src/navigation/CrewAppNavigator.tsx",
-      "id": "edge-82"
+      "id": "edge-77"
     },
     {
       "from": "mobile:crew:today",
@@ -1886,7 +1794,7 @@
       "state": "authenticated",
       "evidence": "code-inferred",
       "source": "apps/crew-mobile/src/navigation/CrewAppNavigator.tsx",
-      "id": "edge-83"
+      "id": "edge-78"
     },
     {
       "from": "mobile:customer:book",
@@ -1896,7 +1804,7 @@
       "state": "request made",
       "evidence": "code-inferred",
       "source": "apps/customer-mobile/src/navigation/CustomerAppNavigator.tsx",
-      "id": "edge-84"
+      "id": "edge-79"
     },
     {
       "from": "web:/about",
@@ -1906,7 +1814,7 @@
       "state": "",
       "evidence": "code-inferred",
       "source": "apps/web/src/app/about/page.tsx",
-      "id": "edge-85"
+      "id": "edge-80"
     },
     {
       "from": "web:/about",
@@ -1916,27 +1824,17 @@
       "state": "",
       "evidence": "code-inferred",
       "source": "apps/web/src/app/about/page.tsx",
-      "id": "edge-86"
+      "id": "edge-81"
     },
     {
       "from": "web:/about",
-      "to": "web:/auth/crew",
-      "action": "Open Crew",
+      "to": "web:/login",
+      "action": "Open Login",
       "role": "public",
       "state": "",
       "evidence": "code-inferred",
       "source": "apps/web/src/app/about/page.tsx",
-      "id": "edge-87"
-    },
-    {
-      "from": "web:/about",
-      "to": "web:/crew",
-      "action": "Open Crew",
-      "role": "public",
-      "state": "",
-      "evidence": "code-inferred",
-      "source": "apps/web/src/app/about/page.tsx",
-      "id": "edge-88"
+      "id": "edge-82"
     },
     {
       "from": "web:/barnegat-nj",
@@ -1946,7 +1844,7 @@
       "state": "",
       "evidence": "code-inferred",
       "source": "apps/web/src/app/barnegat-nj/page.tsx",
-      "id": "edge-89"
+      "id": "edge-83"
     },
     {
       "from": "web:/barnegat-nj",
@@ -1956,7 +1854,7 @@
       "state": "",
       "evidence": "code-inferred",
       "source": "apps/web/src/app/barnegat-nj/page.tsx",
-      "id": "edge-90"
+      "id": "edge-84"
     },
     {
       "from": "web:/barnegat-nj",
@@ -1966,7 +1864,7 @@
       "state": "",
       "evidence": "code-inferred",
       "source": "apps/web/src/app/barnegat-nj/page.tsx",
-      "id": "edge-91"
+      "id": "edge-85"
     },
     {
       "from": "web:/barnegat-nj",
@@ -1976,7 +1874,7 @@
       "state": "",
       "evidence": "code-inferred",
       "source": "apps/web/src/app/barnegat-nj/page.tsx",
-      "id": "edge-92"
+      "id": "edge-86"
     },
     {
       "from": "web:/provider",
@@ -1986,17 +1884,17 @@
       "state": "",
       "evidence": "code-inferred",
       "source": "apps/web/src/app/provider/page.tsx",
-      "id": "edge-93"
+      "id": "edge-87"
     },
     {
       "from": "web:/provider",
-      "to": "web:/login/provider",
-      "action": "Open Provider",
+      "to": "web:/login",
+      "action": "Open Login",
       "role": "public",
       "state": "",
       "evidence": "code-inferred",
       "source": "apps/web/src/app/provider/page.tsx",
-      "id": "edge-94"
+      "id": "edge-88"
     }
   ]
 }

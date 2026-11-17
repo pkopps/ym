@@ -52,6 +52,16 @@ import {
   getMinimumCustomerCustomDateString,
   getCustomerTimingLabel
 } from "./PublicMarketplaceSearchShell";
+import { availabilityRange, serviceDay } from "../lib/bookingJourney";
+
+/** The search window for a timing choice: that day's arrival window, or the whole day for a date range. */
+export function searchWindowForTiming(timing: CustomerTimingPreference, customDate: string | undefined, customWindow: CustomerCustomTimingWindow) {
+  const day = serviceDay(buildDateIsoForCustomerTiming(timing, customDate, customWindow));
+  const window = timing === "custom-range" ? "any"
+    : timing === "custom-date" ? customWindow
+      : timing.endsWith("morning") ? "morning" : timing.endsWith("afternoon") ? "afternoon" : "evening";
+  return availabilityRange(day, window);
+}
 
 const serviceOptions: Array<{ labelKey: TranslationKey; value: ServiceCategory }> = [
   { labelKey: "service.category.lawn_mowing", value: "lawn-mowing" },
@@ -840,6 +850,12 @@ export function CustomerLiveDashboard() {
         address: activeProperty.address,
         categories: [selectedCategory],
         dateIso: buildDateIsoForCustomerTiming(timingPreference, selectedCustomDate, selectedCustomWindow),
+        // Only openings on the chosen day and window; without this, search offers each provider's earliest opening.
+        // A request handed over from the listings page keeps the provider's opening picked there until the customer
+        // changes the timing here.
+        availability: requestedProviderId && timingPreference === requestedTiming
+          ? undefined
+          : searchWindowForTiming(timingPreference, selectedCustomDate, selectedCustomWindow),
         estimatedDurationMinutes: durationMinutes,
         requestSource: activeRetentionOpportunity ? "customer-retention-nudge" : "customer-web-dashboard",
         retentionPreference: getActiveRetentionPreference(),
@@ -1050,7 +1066,7 @@ export function CustomerLiveDashboard() {
           category: selectedCategory,
           scheduledStartIso: slot.startIso,
           scheduledEndIso: slot.endIso,
-          notes: "Requested from the live YardMatch customer dashboard.",
+          notes: "",
           totalCents: providerQuote.estimatedPriceCents,
           quoteToken: providerQuote.quoteToken,
           recommendationSessionId: providerResults?.recommendationSessionId,
@@ -1077,7 +1093,7 @@ export function CustomerLiveDashboard() {
           category: selectedCategory,
           scheduledStartIso: slot.startIso,
           scheduledEndIso: slot.endIso,
-          notes: "Recurring service plan started from the live YardMatch customer dashboard.",
+          notes: "",
           totalCents: providerQuote.estimatedPriceCents,
           quoteToken: providerQuote.quoteToken,
           frequency: selectedCadence,
@@ -1409,12 +1425,11 @@ export function CustomerLiveDashboard() {
       <main className="container stack-lg">
         <section className="card">
           <h2>{i18n.t("customer_live.login_required.title")}</h2>
-          <p>{i18n.t("customer_live.login_required.body")}</p>
           <div className="cta-row">
             <a className="button-secondary" href={addLocalePrefix("/customer", i18n.locale)}>
               {i18n.t("customer_history.request_service")}
             </a>
-            <a className="button" href={addLocalePrefix("/login/customer", i18n.locale)}>
+            <a className="button" href={addLocalePrefix("/login", i18n.locale)}>
               {i18n.t("nav.log_in")}
             </a>
           </div>
@@ -1434,7 +1449,6 @@ export function CustomerLiveDashboard() {
   function renderRequestDetailsEditor(buttonLabel: string) {
     return (
       <>
-        <p>{i18n.t("customer_live.request_editor.body")}</p>
         <div className="form-grid">
           <label className="form-field">
             <span>{i18n.t("customer_live.label.property")}</span>
@@ -1510,7 +1524,7 @@ export function CustomerLiveDashboard() {
             </select>
           </label>
         </div>
-        <div className="cta-row" style={{ marginTop: "1rem" }}>
+        <div className="cta-row u-mt-4">
           <button className="button" disabled={loadingState === "loading"} onClick={handleQuote} data-analytics-action="request-price-and-match" type="button">
             {loadingState === "loading" ? i18n.t("customer_live.working") : buttonLabel}
           </button>
@@ -1649,7 +1663,7 @@ export function CustomerLiveDashboard() {
         </div>
         <BookingSchedulePanel booking={booking} bookingId={booking.id} onUpdated={loadDashboard} />
         {!booking.scheduleUpdates?.length && booking.lateEtaIso && !booking.onRouteConfirmedAt ? (
-          <div className="list-panel" style={{ marginTop: "1rem" }}>
+          <div className="list-panel u-mt-4">
             <h3>{i18n.t("customer_live.active_booking.delay_update")}</h3>
             <p>{i18n.t("customer_live.active_booking.running_behind", { provider: providerName })}</p>
             <p>
@@ -1659,7 +1673,7 @@ export function CustomerLiveDashboard() {
           </div>
         ) : null}
         {booking.activeExceptionType ? (
-          <div className="list-panel" style={{ marginTop: "1rem" }}>
+          <div className="list-panel u-mt-4">
             <h3>{getBookingExceptionLabel(booking.activeExceptionType)}</h3>
             <p>{i18n.t("customer_live.active_booking.flagged_issue", { provider: providerName })}</p>
             <p>
@@ -1784,9 +1798,6 @@ export function CustomerLiveDashboard() {
             </div>
             {canEditVisit ? (
               <>
-                <p className="history-card__detail-copy">
-                  {i18n.t("customer_live.active_booking.change_copy")}
-                </p>
                 <div className="form-grid">
                   <label className="form-field">
                     <span>{i18n.t("customer_live.active_booking.new_start")}</span>
@@ -1857,8 +1868,7 @@ export function CustomerLiveDashboard() {
               {canOpenDispute ? (
                 <div className="list-panel">
                   <h3>{i18n.t("customer_live.dispute.title")}</h3>
-                  <p>{i18n.t("customer_live.dispute.body")}</p>
-                  <div className="form-grid" style={{ marginTop: "1rem" }}>
+                  <div className="form-grid u-mt-4">
                     <label className="form-field form-field--full">
                       <span>{i18n.t("customer_live.dispute.reason")}</span>
                       <textarea
@@ -1874,7 +1884,7 @@ export function CustomerLiveDashboard() {
                       />
                     </label>
                   </div>
-                  <div className="cta-row" style={{ marginTop: "1rem" }}>
+                  <div className="cta-row u-mt-4">
                     <button
                       className="button-secondary"
                       disabled={loadingState === "loading"}
@@ -1890,18 +1900,18 @@ export function CustomerLiveDashboard() {
                 <div className="list-panel">
                   <h3>{i18n.t("customer_live.refund.title")}</h3>
                   <a className="button" href={addLocalePrefix(`/help?bookingId=${encodeURIComponent(booking.id)}`, i18n.locale)}>{i18n.t("complaint.title")}</a>
-                  <p>
-                    {paymentRecord?.refundReviewStatus === "requested"
-                      ? i18n.t("customer_live.refund.reviewing")
-                      : paymentRecord?.refundReviewStatus === "denied"
-                        ? i18n.t("customer_live.refund.denied", {
-                            notes: paymentRecord?.refundDecisionNotes ? ` ${paymentRecord.refundDecisionNotes}` : ""
-                          })
-                        : i18n.t("customer_live.refund.body")}
-                  </p>
+                  {paymentRecord?.refundReviewStatus === "requested" ? (
+                    <p>{i18n.t("customer_live.refund.reviewing")}</p>
+                  ) : paymentRecord?.refundReviewStatus === "denied" ? (
+                    <p>
+                      {i18n.t("customer_live.refund.denied", {
+                        notes: paymentRecord?.refundDecisionNotes ? ` ${paymentRecord.refundDecisionNotes}` : ""
+                      })}
+                    </p>
+                  ) : null}
                   {paymentRecord?.refundReviewStatus !== "requested" ? (
                     <>
-                      <div className="form-grid" style={{ marginTop: "1rem" }}>
+                      <div className="form-grid u-mt-4">
                         <label className="form-field form-field--full">
                           <span>{i18n.t("customer_live.refund.reason")}</span>
                           <textarea
@@ -1917,7 +1927,7 @@ export function CustomerLiveDashboard() {
                           />
                         </label>
                       </div>
-                      <div className="cta-row" style={{ marginTop: "1rem" }}>
+                      <div className="cta-row u-mt-4">
                         <button
                           className="button-secondary"
                           disabled={loadingState === "loading" || !canRequestRefundReview(booking, paymentRecord)}
@@ -2234,7 +2244,6 @@ export function CustomerLiveDashboard() {
       <main className="container stack-lg">
         <section className="page-hero">
           <h1>{i18n.t("nav.user.past_visits")}</h1>
-          <p>{i18n.t("customer_live.past_visits.body")}</p>
         </section>
 
         <nav aria-label={i18n.t("customer_live.account_sections_aria")} className="dashboard-switcher">
@@ -2261,7 +2270,6 @@ export function CustomerLiveDashboard() {
           <div className="search-result-title">
             <div>
               <h1>{i18n.t("customer_history.request_service")}</h1>
-              <p>{i18n.t("customer_live.request_service.body")}</p>
             </div>
             <a className="button-secondary" href={addLocalePrefix("/customer/dashboard", i18n.locale)}>
               {i18n.t("customer_live.back_to_account")}
@@ -2270,7 +2278,6 @@ export function CustomerLiveDashboard() {
         ) : (
           <>
             <h1>{i18n.t("customer_live.welcome_back", { name: customer?.fullName?.split(" ")[0] ?? i18n.t("customer_live.there") })}</h1>
-            <p>{i18n.t("customer_live.account.body")}</p>
           </>
         )}
       </section>
@@ -2404,7 +2411,7 @@ export function CustomerLiveDashboard() {
                       {quote.normalizedAddress.validationMessage ? (
                         <p>{quote.normalizedAddress.validationMessage}</p>
                       ) : null}
-                      <div className="stack-sm" style={{ paddingBottom: 0 }}>
+                      <div className="stack-sm u-pb-0">
                         {quote.confidenceReasons.map((reason) => (
                           <p key={`${reason.impact}-${reason.label}`}>
                             <strong>{reason.label}</strong> {reason.detail}
@@ -2421,7 +2428,7 @@ export function CustomerLiveDashboard() {
                   </div>
                 </details>
                 {!providerStepActive ? (
-                  <div className="cta-row" style={{ marginTop: "1rem" }}>
+                  <div className="cta-row u-mt-4">
                     <button
                       className="button"
                       disabled={loadingState === "loading"}
@@ -2448,7 +2455,6 @@ export function CustomerLiveDashboard() {
                         ? i18n.t("customer_live.provider.best_match")
                         : i18n.t("customer_live.provider.best_fit")}
                   </h2>
-                  <p>{i18n.t("customer_live.provider.review_body")}</p>
                 </div>
                 {providerResults ? (
                   <span className="result-badge result-badge--neutral">
@@ -2459,10 +2465,9 @@ export function CustomerLiveDashboard() {
               {providerSearchState === "loading" ? (
                 <article className="list-panel">
                   <h3>{i18n.t("customer_live.provider.checking_title")}</h3>
-                  <p>{i18n.t("customer_live.provider.checking_body")}</p>
                 </article>
               ) : providerResults ? (
-                <div className="stack-lg" style={{ paddingBottom: 0 }}>
+                <div className="stack-lg u-pb-0">
                   {providerResults.providers.length === 0 ? (
                     <article className="list-panel">
                       <h3>{i18n.t("customer_live.provider.no_verified.title")}</h3>
@@ -2642,7 +2647,7 @@ export function CustomerLiveDashboard() {
                         ) : null}
                       </div>
                       {!recommendedProviderCard.slot ? (
-                        <p style={{ marginTop: "0.75rem" }}>
+                        <p className="u-mt-3">
                           {i18n.t("customer_live.provider.serves_no_window")}
                         </p>
                       ) : null}
@@ -2743,7 +2748,7 @@ export function CustomerLiveDashboard() {
                           </details>
                         ) : null}
                         {!slot ? (
-                          <p style={{ marginTop: "0.75rem" }}>
+                          <p className="u-mt-3">
                             {i18n.t("customer_live.provider.serves_no_window")}
                           </p>
                         ) : null}
@@ -2940,11 +2945,6 @@ export function CustomerLiveDashboard() {
               <div className="search-result-title">
                 <div>
                   <h2>{hasAccountHistory ? i18n.t("customer_live.ready_another_visit") : i18n.t("customer_live.need_service")}</h2>
-                  <p>
-                    {hasAccountHistory
-                      ? i18n.t("customer_live.ready_another_visit_body")
-                      : i18n.t("customer_live.need_service_body")}
-                  </p>
                 </div>
                 <a className="button" href={addLocalePrefix("/customer/dashboard?flow=request", i18n.locale)}>
                   {i18n.t("customer_history.request_service")}
@@ -2966,7 +2966,7 @@ export function CustomerLiveDashboard() {
                     : i18n.t("customer_live.book_again")
                   : i18n.t("customer_live.past_repeat_plans")}
               </h2>
-              <div className="stack-lg" style={{ paddingBottom: 0 }}>
+              <div className="stack-lg u-pb-0">
                 {sectionSpotlightBookAgainOption?.kind === "plan"
                   ? renderRecurringPlanCard(sectionSpotlightBookAgainOption.summary)
                   : sectionSpotlightBookAgainOption?.kind === "retention"
@@ -2980,7 +2980,7 @@ export function CustomerLiveDashboard() {
                       })}
                     </summary>
                     <div className="service-card-disclosure__body">
-                      <div className="stack-lg" style={{ paddingBottom: 0 }}>
+                      <div className="stack-lg u-pb-0">
                         {sectionAdditionalRecurringPlans.map((summary) => (
                           <div key={summary.plan.id}>{renderRecurringPlanCard(summary)}</div>
                         ))}
@@ -3015,7 +3015,7 @@ export function CustomerLiveDashboard() {
               {sectionSpotlightBooking ? (
                 <article className="card">
                   <h2>{priorityCardKind === "booking" ? i18n.t("customer_live.other_visits") : i18n.t("customer_live.happening_now")}</h2>
-                  <div className="stack-lg" style={{ paddingBottom: 0 }}>
+                  <div className="stack-lg u-pb-0">
                     {renderActiveBookingCard(sectionSpotlightBooking)}
                     {sectionAdditionalActiveBookings.length ? (
                       <details className="service-card-disclosure">
@@ -3025,7 +3025,7 @@ export function CustomerLiveDashboard() {
                           })}
                         </summary>
                         <div className="service-card-disclosure__body">
-                          <div className="stack-lg" style={{ paddingBottom: 0 }}>
+                          <div className="stack-lg u-pb-0">
                             {sectionAdditionalActiveBookings.map((booking) => (
                               <div key={booking.id}>{renderActiveBookingCard(booking)}</div>
                             ))}
@@ -3040,7 +3040,7 @@ export function CustomerLiveDashboard() {
               {sectionSpotlightReviewOpportunity ? (
                 <article className="card">
                   <h2>{priorityCardKind === "review" ? i18n.t("customer_live.other_reviews") : i18n.t("customer_live.review.ready")}</h2>
-                  <div className="stack-lg" style={{ paddingBottom: 0 }}>
+                  <div className="stack-lg u-pb-0">
                     {renderReviewOpportunityCard(sectionSpotlightReviewOpportunity)}
                     {sectionAdditionalReviewOpportunities.length ? (
                       <details className="service-card-disclosure">
@@ -3050,7 +3050,7 @@ export function CustomerLiveDashboard() {
                           })}
                         </summary>
                         <div className="service-card-disclosure__body">
-                          <div className="stack-lg" style={{ paddingBottom: 0 }}>
+                          <div className="stack-lg u-pb-0">
                             {sectionAdditionalReviewOpportunities.map((opportunity) => (
                               <div key={opportunity.bookingId}>{renderReviewOpportunityCard(opportunity)}</div>
                             ))}

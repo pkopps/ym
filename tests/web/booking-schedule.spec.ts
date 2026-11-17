@@ -28,7 +28,7 @@ test("weather hold and customer-approved reschedule are visible across responsiv
   await panel.getByLabel("Arrival window").selectOption("12");
   await panel.getByRole("button", { name: "Notify customer", exact: true }).click();
   await expect(panel.getByRole("heading", { name: "New window proposed" })).toBeVisible();
-  await page.goto("/login/customer");
+  await page.goto("/login");
   await page.getByLabel("Email").fill(customer.email);
   await page.getByLabel("Password", { exact: true }).fill(testPassword);
   await page.getByRole("button", { name: "Log in", exact: true }).click();

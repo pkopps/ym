@@ -152,7 +152,6 @@ export function SecuritySettingsPanel() {
 
       <section className="card auth-form-stack">
         <div>
-          <span className="eyebrow">{i18n.t("security.eyebrow")}</span>
           <h2>{i18n.t("security.two_factor.title")}</h2>
           <p>
             {settings?.twoFactorEnabled && settings.destinationHint && settings.method

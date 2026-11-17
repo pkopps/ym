@@ -148,7 +148,7 @@ export function AccountSignupForm({ role }: { role: AccountSignupRole }) {
   const postSignupRedirectPath = buildPostSignupRedirectPath();
   const localizedPostSignupRedirectPath = addLocalePrefix(postSignupRedirectPath, i18n.locale);
   const customerLoginHref = addLocalePrefix(
-    `/login/customer?returnTo=${encodeURIComponent(localizedPostSignupRedirectPath)}`,
+    `/login?returnTo=${encodeURIComponent(localizedPostSignupRedirectPath)}`,
     i18n.locale
   );
   const socialRedirectUri = buildSocialAuthRedirectUri({ role, returnTo: localizedPostSignupRedirectPath });

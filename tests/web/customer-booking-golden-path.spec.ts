@@ -119,7 +119,7 @@ test.describe.serial("customer booking golden path", () => {
     await expect(page.getByRole("heading", { level: 3, name: "GreenStride Lawn Co." })).toBeVisible();
     await expect(page.getByText("Open route window", { exact: true })).toBeVisible();
     await expect(
-      page.getByText("No charge yet. The provider reviews and confirms before payment is collected.")
+      page.getByText("No charge yet. The provider confirms before any payment is due.")
     ).toBeVisible();
     await page.screenshot({ path: `${evidenceRoot}/customer-quote-desktop.png`, fullPage: true });
     await page.getByRole("button", { name: "Request this time" }).click();
@@ -198,7 +198,7 @@ test.describe.serial("customer booking golden path", () => {
     await dialog.getByRole("button", { name: "Reservar", exact: true }).click();
     await expect(page).toHaveURL(/\/es\/customer\/booking\/review/);
     await page.getByRole("link", { name: "Iniciar sesion y continuar", exact: true }).click();
-    await expect(page).toHaveURL(/\/es\/login\/customer\?returnTo=/);
+    await expect(page).toHaveURL(/\/es\/login\?returnTo=/);
     expect(new URL(page.url()).searchParams.get("returnTo")).toContain("/es/customer/booking/review?draft=");
     await expect(page.getByRole("link", { name: "Continuar con Apple" })).toBeVisible();
     await page.getByLabel("Correo").fill(email);

@@ -278,7 +278,7 @@ export function OpsSupportQueue() {
         {i18n.t("ops_auto.ops_support_queue.triage_live_incidents_then_resolve_them_with_an_e7b7ep")} </p>
       {statusMessage ? <p>{statusMessage}</p> : null}
       {errorMessage ? <p>{errorMessage}</p> : null}
-      <div className="stack-lg" style={{ paddingBottom: 0 }}>
+      <div className="stack-lg u-pb-0">
         {tickets.length > 0 ? (
           tickets.map((supportTicket) => {
             const {
@@ -381,7 +381,7 @@ export function OpsSupportQueue() {
                     {booking.activeExceptionType ? ` • issue: ${booking.activeExceptionType}` : ""}
                   </p>
                   {evidenceSummary ? (
-                    <div className="list-panel" style={{ padding: "0.9rem" }}>
+                    <div className="list-panel u-p-4">
                       <strong>{i18n.t("ops_auto.ops_support_queue.evidence_signal_sp19jj")}</strong>
                       <p>
                         {evidenceSummary.photoCount} {i18n.t("ops_auto.ops_support_queue.photos_l2nhrx")} {evidenceSummary.noteCount} {i18n.t("ops_auto.ops_support_queue.notes_z7p7r7")}{" "}
@@ -394,7 +394,7 @@ export function OpsSupportQueue() {
                         {evidenceSummary.inconclusiveCount} {i18n.t("ops_auto.ops_support_queue.unreviewed_9i5opa")} {evidenceSummary.unreviewedCount}
                       </p>
                       {resolutionGuidance ? (
-                        <p className="warning-copy" style={{ marginBottom: 0 }}>
+                        <p className="warning-copy u-mb-0">
                           {i18n.t("ops_auto.ops_support_queue.guidance_18vw3i")}{" "}
                           {resolutionGuidance.recommendedAction
                             ? `${resolutionGuidance.recommendedAction.replaceAll("-", " ")}`
@@ -403,23 +403,23 @@ export function OpsSupportQueue() {
                         </p>
                       ) : null}
                       {resolutionPolicy ? (
-                        <p style={{ marginBottom: 0 }}>
+                        <p className="u-mb-0">
                           {i18n.t("ops_auto.ops_support_queue.policy_ky4s2w")} {resolutionPolicy.evidenceSignal.replaceAll("-", " ")} •{" "}
                           {resolutionPolicy.confidence} confidence
                         </p>
                       ) : null}
                       {resolutionPolicy?.warnings.map((warning) => (
-                        <p className="warning-copy" key={warning} style={{ marginBottom: 0 }}>
+                        <p className="warning-copy u-mb-0" key={warning}>
                           {warning}
                         </p>
                       ))}
                       {resolutionGuidance?.templates.length ? (
-                        <div className="stack-sm" style={{ marginTop: "0.75rem" }}>
+                        <div className="stack-sm u-mt-3">
                           <p>{i18n.t("ops_auto.ops_support_queue.suggested_customer_updates_9otdkr")}</p>
                           <div className="stack-sm">
                             {resolutionGuidance.templates.map((template) => (
                               <article className="card" key={`${ticket.id}-${template.key}`}>
-                                <div className="cta-row" style={{ justifyContent: "space-between", gap: "1rem" }}>
+                                <div className="cta-row u-justify-between u-gap-4">
                                   <div>
                                     <strong>{template.title}</strong>
                                     <p>
@@ -479,55 +479,45 @@ export function OpsSupportQueue() {
                         return (
                           <div key={phase} className="stack-md">
                             <p>{phase === "before" ? "Before-work evidence" : "After-work evidence"}</p>
-                            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem" }}>
+                            <div className="u-flex u-wrap u-gap-3">
                               {evidenceItems.slice(0, 6).map((evidence) => (
                                 <div
                                   key={evidence.id}
-                                  style={{
-                                    display: "grid",
-                                    gap: "0.5rem",
-                                    width: "12rem"
-                                  }}
+                                  className="evidence-tile"
                                 >
                                   {evidence.evidenceType === "photo" && evidence.imageDataUrl ? (
                                     <img
                                       alt={`${phase} evidence`}
                                       src={evidence.imageDataUrl}
-                                      style={{
-                                        width: "7rem",
-                                        height: "7rem",
-                                        objectFit: "cover",
-                                        borderRadius: "1rem",
-                                        border: "1px solid rgba(21, 54, 47, 0.12)"
-                                      }}
+                                      className="evidence-tile__image"
                                     />
                                   ) : null}
                                   {evidence.evidenceType === "note" ? (
-                                    <div className="list-panel" style={{ padding: "0.75rem" }}>
+                                    <div className="list-panel u-p-3">
                                       <strong>{i18n.t("ops_auto.ops_support_queue.onsite_note_fuonas")}</strong>
-                                      <p style={{ margin: "0.35rem 0 0 0" }}>{evidence.note}</p>
+                                      <p className="u-m-0 u-mt-1">{evidence.note}</p>
                                     </div>
                                   ) : null}
                                   {evidence.evidenceType === "checklist" ? (
-                                    <div className="list-panel" style={{ padding: "0.75rem" }}>
+                                    <div className="list-panel u-p-3">
                                       <strong>{i18n.t("ops_auto.ops_support_queue.checklist_va9pbu")}</strong>
-                                      <div style={{ display: "grid", gap: "0.25rem", marginTop: "0.35rem" }}>
+                                      <div className="u-grid u-gap-1 u-mt-1">
                                         {(evidence.checklistItems ?? []).map((item) => (
-                                          <p key={item.label} style={{ margin: 0 }}>
+                                          <p key={item.label} className="u-m-0">
                                             {item.completed ? "Done" : "Open"} • {item.label}
                                           </p>
                                         ))}
                                       </div>
                                     </div>
                                   ) : null}
-                                  <p style={{ margin: 0, fontSize: "0.9rem" }}>
+                                  <p className="u-m-0 u-text-sm">
                                     {evidence.capturedByRole} • {formatDateTime(evidence.capturedAt)}
                                   </p>
                                   {evidence.evidenceType !== "note" && evidence.note ? (
-                                    <p style={{ margin: 0 }}>{evidence.note}</p>
+                                    <p className="u-m-0">{evidence.note}</p>
                                   ) : null}
                                   {evidence.reviewStatus ? (
-                                    <p className="warning-copy" style={{ margin: 0 }}>
+                                    <p className="warning-copy u-m-0">
                                       {i18n.t("ops_auto.ops_support_queue.ops_review_njh6ss")} {evidence.reviewStatus.replaceAll("-", " ")}
                                       {evidence.reviewNotes ? ` • ${evidence.reviewNotes}` : ""}
                                     </p>

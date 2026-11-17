@@ -182,7 +182,7 @@ export function ProviderPaymentsBoard() {
         <h2>{i18n.t("ops_auto.provider_payments_board.provider_login_required_hd0xut")}</h2>
         <p>{i18n.t("ops_auto.provider_payments_board.use_a_business_owner_account_to_view_the_hhfsyg")}</p>
         <div className="cta-row">
-          <a className="button" href="/login/provider">
+          <a className="button" href="/login">
             {i18n.t("ops_auto.provider_payments_board.go_to_provider_login_wv0crr")} </a>
         </div>
       </section>
@@ -201,7 +201,6 @@ export function ProviderPaymentsBoard() {
       <section className="card provider-payment-overview" data-testid="provider-connect-status">
         <div className="search-result-title">
           <div>
-            <span className="eyebrow">{i18n.t("provider_payments.connect.eyebrow")}</span>
             <h2>
               {connectStatus?.transferReady
                 ? i18n.t("provider_payments.connect.ready")
@@ -369,7 +368,6 @@ export function ProviderPaymentsBoard() {
         <article className="card provider-payment-card-stack">
           <div className="search-result-title">
             <div>
-              <span className="eyebrow">{i18n.t("provider_payments.crew.eyebrow")}</span>
               <h2>{i18n.t("provider_payments.crew.title")}</h2>
             </div>
           </div>

@@ -106,6 +106,8 @@ export class DataEngineeringLogger {
 
   public getOverview(input: {
     bookings: Booking[];
+    /** Counts taken in the database. When given, `bookings` is not read. */
+    bookingCounts?: { total: number; requested: number; requestedLast24Hours: number };
     launchLeads: LaunchLead[];
     reviewInvites: ReviewInvite[];
     supportTickets: SupportTicket[];
@@ -153,10 +155,10 @@ export class DataEngineeringLogger {
 
     return {
       generatedAt: new Date().toISOString(),
-      totalBookings: input.bookings.length,
-      requestedBookings: input.bookings.filter((booking) => booking.status === "requested").length,
-      bookingsLast24Hours: input.bookings.filter((booking) => this.happenedWithinLastDay(booking.requestedAt))
-        .length,
+      totalBookings: input.bookingCounts?.total ?? input.bookings.length,
+      requestedBookings: input.bookingCounts?.requested ?? input.bookings.filter((booking) => booking.status === "requested").length,
+      bookingsLast24Hours: input.bookingCounts?.requestedLast24Hours ??
+        input.bookings.filter((booking) => this.happenedWithinLastDay(booking.requestedAt)).length,
       refundRequestedCount: this.events.filter(
         (event) => event.name === MarketplaceTelemetryEventCatalog.refundRequested
       ).length,

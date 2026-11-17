@@ -87,13 +87,8 @@ export function LaunchLeadCaptureCard({
 
   return (
     <article className="card">
-      <span className="eyebrow">{i18n.t("launch_lead.eyebrow")}</span>
       <h2>{title ?? i18n.t("launch_lead.title")}</h2>
-      <p>
-        {description ??
-          i18n.t("launch_lead.description")}
-      </p>
-      <p>{i18n.t("launch_lead.default_contact")}</p>
+      {description ? <p>{description}</p> : null}
       <div className="form-grid">
         <label className="form-field">
           <span>{i18n.t("launch_lead.name")}</span>
@@ -155,13 +150,13 @@ export function LaunchLeadCaptureCard({
           />
         </label>
       </div>
-      <div className="cta-row" style={{ marginTop: "1rem" }}>
+      <div className="cta-row u-mt-4">
         <button data-analytics-action="send-coverage-inquiry" className="button" disabled={isWorking} onClick={() => void handleSubmit()} type="button">
           {isWorking ? i18n.t("chat.sending") : i18n.t("launch_lead.request_follow_up")}
         </button>
       </div>
-      {statusMessage ? <p style={{ marginTop: "1rem" }}>{statusMessage}</p> : null}
-      {errorMessage ? <p style={{ marginTop: "1rem" }}>{errorMessage}</p> : null}
+      {statusMessage ? <p className="u-mt-4">{statusMessage}</p> : null}
+      {errorMessage ? <p className="u-mt-4">{errorMessage}</p> : null}
     </article>
   );
 }

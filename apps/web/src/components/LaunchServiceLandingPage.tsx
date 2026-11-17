@@ -33,10 +33,6 @@ export function LaunchServiceLandingPage({
     variant === "town-service" ? "launch_service.title.town_service" : "launch_service.title.service",
     values
   );
-  const eyebrow = i18n.t(
-    variant === "town-service" ? "launch_service.eyebrow.town_service" : "launch_service.eyebrow.service",
-    values
-  );
   const summary =
     variant === "town-service"
       ? i18n.t(service.metadataDescriptionKey, values)
@@ -55,7 +51,6 @@ export function LaunchServiceLandingPage({
   return (
     <main className="container stack-lg">
       <section className="page-hero">
-        <span className="eyebrow">{eyebrow}</span>
         <h1>{pageTitle}</h1>
         <p>{summary}</p>
         <div className="cta-row">
@@ -161,37 +156,18 @@ export function LaunchServiceLandingPage({
         title={i18n.t("launch_service.proof.title", values)}
       />
 
-      <section className="grid-two">
+      <section>
         <LaunchLeadCaptureCard
           defaultAreaLabel={launchAreaLabel}
           defaultServiceCategory={preferredCategory}
-          description={i18n.t("launch_service.lead.body", values)}
           requestSource={variant === "town-service" ? "launch-town-service-lead-form" : "launch-service-lead-form"}
           title={i18n.t("launch_service.lead.title", values)}
         />
-        <article className="card">
-          <h2>{i18n.t("launch_service.after_help.title")}</h2>
-          <ol className="timeline">
-            <li>
-              <strong>1.</strong>
-              <span>{i18n.t("launch_service.after_help.step.queue")}</span>
-            </li>
-            <li>
-              <strong>2.</strong>
-              <span>{i18n.t("launch_service.after_help.step.owner_response")}</span>
-            </li>
-            <li>
-              <strong>3.</strong>
-              <span>{i18n.t("launch_service.after_help.step.closed_loop")}</span>
-            </li>
-          </ol>
-        </article>
       </section>
 
       <section className="stack-lg">
         <div className="section-header">
           <h2>{i18n.t("launch_service.faq.title")}</h2>
-          <p>{i18n.t("launch_service.faq.body")}</p>
         </div>
         <div className="grid-two">
           {(variant === "town-service" ? [

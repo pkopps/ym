@@ -17,9 +17,7 @@ export default async function CustomerSignupPage() {
   return (
     <main className="container stack-lg auth-signup-page">
       <section className="auth-page-header">
-        <span className="eyebrow">{i18n.t("auth_customer.eyebrow")}</span>
         <h1>{i18n.t("auth_customer.title")}</h1>
-        <p>{i18n.t("auth_customer.body")}</p>
       </section>
 
       <Suspense fallback={<LoadingScreen label={i18n.t("auth_signup.loading")} />}>

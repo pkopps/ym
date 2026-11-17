@@ -8,13 +8,13 @@ export function InfoCard({
   children
 }: {
   title: string;
-  description: string;
+  description?: string;
   children?: ReactNode;
 }) {
   return (
     <View style={styles.card}>
       <Text style={styles.title}>{title}</Text>
-      <Text style={styles.description}>{description}</Text>
+      {description ? <Text style={styles.description}>{description}</Text> : null}
       {children}
     </View>
   );

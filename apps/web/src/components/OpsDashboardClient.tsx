@@ -13,6 +13,7 @@ import { NotificationOpsBoard } from "./NotificationOpsBoard";
 import { OpsAutomationBoard } from "./OpsAutomationBoard";
 import { OpsAccountManagementBoard } from "./OpsAccountManagementBoard";
 import { OpsFinancialExceptionBoard } from "./OpsFinancialExceptionBoard";
+import { OpsFinderFeeExceptionBoard } from "./OpsFinderFeeExceptionBoard";
 import { OpsLaunchLeadBoard } from "./OpsLaunchLeadBoard";
 import { OpsLaunchPlaybook } from "./OpsLaunchPlaybook";
 import { OpsPayoutRunBoard } from "./OpsPayoutRunBoard";
@@ -259,7 +260,7 @@ export function OpsDashboardClient() {
       </section>
 
       <nav className="workspace-nav" aria-label={i18n.t("workspace.destinations")}>
-        {["support", "providers", "leads", ...(payments ? ["payouts"] : []), "reports", "administration"].map(key => <a key={key} href={`#ops-${key}`} data-analytics-action={`ops-${key}`}>{i18n.t(`workspace.${key}` as Parameters<typeof i18n.t>[0])}</a>)}
+        {["support", "providers", "leads", "billing", ...(payments ? ["payouts"] : []), "reports", "administration"].map(key => <a key={key} href={`#ops-${key}`} data-analytics-action={`ops-${key}`}>{i18n.t(`workspace.${key}` as Parameters<typeof i18n.t>[0])}</a>)}
       </nav>
       <section className="grid-three">
         <article className="card"><h2>{overview.overdueLaunchLeads}</h2><a href="#ops-leads">{i18n.t("workspace.overdue_leads")}</a></article>
@@ -269,6 +270,7 @@ export function OpsDashboardClient() {
       <WorkspaceSection id="ops-support" title={i18n.t("workspace.support")} defaultOpen><OpsSupportQueue /></WorkspaceSection>
       <WorkspaceSection id="ops-providers" title={i18n.t("workspace.providers")}><OpsProviderVerificationQueue /></WorkspaceSection>
       <WorkspaceSection id="ops-leads" title={i18n.t("workspace.leads")}><OpsLaunchLeadBoard /></WorkspaceSection>
+      <WorkspaceSection id="ops-billing" title={i18n.t("workspace.billing")}><OpsFinderFeeExceptionBoard /></WorkspaceSection>
       {payments ? <WorkspaceSection id="ops-payouts" title={i18n.t("workspace.payouts")}><OpsPayoutRunBoard /><OpsFinancialExceptionBoard /></WorkspaceSection> : null}
       <WorkspaceSection id="ops-reviews" title={i18n.t("workspace.reviews")}><OpsReviewResponseBoard initialItems={overview.recentReviewResponses} /></WorkspaceSection>
       <WorkspaceSection id="ops-reports" title={i18n.t("workspace.reports")}><ProductAnalyticsBoard />
@@ -490,7 +492,7 @@ export function OpsDashboardClient() {
           {overview.inboundAutomationAlerts.length === 0 ? (
             <p>{i18n.t("ops_auto.ops_dashboard_client.no_inbound_automation_channels_look_stale_right_now_rch9k9")}</p>
           ) : (
-            <div className="stack-lg" style={{ paddingBottom: 0 }}>
+            <div className="stack-lg u-pb-0">
               {overview.inboundAutomationAlerts.map((alert) => (
                 <article className="list-panel" key={`${alert.kind}:${alert.sourceKey}`}>
                   <h3>{alert.label}</h3>
@@ -511,7 +513,7 @@ export function OpsDashboardClient() {
           {overview.recentInboundAutomationActivity.length === 0 ? (
             <p>{i18n.t("ops_auto.ops_dashboard_client.no_automated_inbound_lead_or_review_activity_has_9iv4w")}</p>
           ) : (
-            <div className="stack-lg" style={{ paddingBottom: 0 }}>
+            <div className="stack-lg u-pb-0">
               {overview.recentInboundAutomationActivity.map((item) => (
                 <article className="list-panel" key={item.id}>
                   <h3>{item.label}</h3>
@@ -533,7 +535,7 @@ export function OpsDashboardClient() {
         {overview.inboundAutomationSourceMetrics.length === 0 ? (
           <p>{i18n.t("ops_auto.ops_dashboard_client.no_automated_inbound_channels_have_been_recorded_yet_cpi4n4")}</p>
         ) : (
-          <div className="stack-lg" style={{ paddingBottom: 0 }}>
+          <div className="stack-lg u-pb-0">
             {overview.inboundAutomationSourceMetrics.map((metric) => (
               <article className="list-panel" key={`${metric.kind}:${metric.sourceKey}`}>
                 <div className="search-result-title">
@@ -564,7 +566,7 @@ export function OpsDashboardClient() {
           {overview.accessAlerts.length === 0 ? (
             <p>{i18n.t("ops_auto.ops_dashboard_client.no_internal_access_alerts_need_action_right_now_y7izot")}</p>
           ) : (
-            <div className="stack-lg" style={{ paddingBottom: 0 }}>
+            <div className="stack-lg u-pb-0">
               {overview.accessAlerts.map((alert) => (
                 <article className="list-panel" key={`${alert.opsUserId}:${alert.title}`}>
                   <h3>{alert.title}</h3>
@@ -584,7 +586,7 @@ export function OpsDashboardClient() {
           {overview.recentFailedOpsSignIns.length === 0 ? (
             <p>{i18n.t("ops_auto.ops_dashboard_client.no_failed_internal_sign_ins_recorded_recently_xohrw9")}</p>
           ) : (
-            <div className="stack-lg" style={{ paddingBottom: 0 }}>
+            <div className="stack-lg u-pb-0">
               {overview.recentFailedOpsSignIns.map((item) => (
                 <article className="list-panel" key={`${item.opsUserId}:${item.failedAt}`}>
                   <h3>{item.opsUserName}</h3>
@@ -640,7 +642,7 @@ export function OpsDashboardClient() {
         {overview.retentionMetricsByStrategy.length === 0 ? (
           <p>{i18n.t("ops_auto.ops_dashboard_client.no_retention_strategy_events_recorded_yet_hdv8ed")}</p>
         ) : (
-          <div className="stack-lg" style={{ paddingBottom: 0 }}>
+          <div className="stack-lg u-pb-0">
             {overview.retentionMetricsByStrategy.map((metric) => (
               <article className="list-panel" key={`${metric.strategyKey}:${metric.category}`}>
                 <div className="search-result-title">
@@ -668,7 +670,7 @@ export function OpsDashboardClient() {
           {overview.retentionMetricsBySource.length === 0 ? (
             <p>{i18n.t("ops_auto.ops_dashboard_client.no_repeat_service_conversions_recorded_from_retention_flows_a35sfe")}</p>
           ) : (
-            <div className="stack-lg" style={{ paddingBottom: 0 }}>
+            <div className="stack-lg u-pb-0">
               {overview.retentionMetricsBySource.map((metric) => (
                 <article
                   className="list-panel"
@@ -699,7 +701,7 @@ export function OpsDashboardClient() {
           {overview.retentionMetricsByProvider.length === 0 ? (
             <p>{i18n.t("ops_auto.ops_dashboard_client.no_provider_level_repeat_service_conversions_recorded_from_5ajlgw")}</p>
           ) : (
-            <div className="stack-lg" style={{ paddingBottom: 0 }}>
+            <div className="stack-lg u-pb-0">
               {overview.retentionMetricsByProvider.map((metric) => (
                 <article
                   className="list-panel"
@@ -760,7 +762,7 @@ export function OpsDashboardClient() {
             </article>
           </div>
           {overview.apiRuntime.alerts.length > 0 ? (
-            <div className="stack-lg" style={{ paddingBottom: 0 }}>
+            <div className="stack-lg u-pb-0">
               {overview.apiRuntime.alerts.map((alert) => (
                 <article className="list-panel" key={`${alert.severity}:${alert.title}`}>
                   <h3>{alert.title}</h3>
@@ -775,7 +777,7 @@ export function OpsDashboardClient() {
           {overview.apiRuntime.routeMetrics.some(
             (metric) => metric.serverErrorCount > 0 || metric.slowRequestCount > 0
           ) ? (
-            <div className="stack-lg" style={{ paddingBottom: 0 }}>
+            <div className="stack-lg u-pb-0">
               <h3>Routes needing attention</h3>
               {overview.apiRuntime.routeMetrics
                 .filter((metric) => metric.serverErrorCount > 0 || metric.slowRequestCount > 0)
@@ -793,7 +795,7 @@ export function OpsDashboardClient() {
           {overview.apiRuntime.recentFailures.length > 0 ? (
             <details>
               <summary>Recent failure types and request IDs</summary>
-              <div className="stack-lg" style={{ paddingBottom: 0 }}>
+              <div className="stack-lg u-pb-0">
                 {overview.apiRuntime.recentFailures.slice(0, 10).map((failure) => (
                   <article className="list-panel" key={failure.requestId}>
                     <h3>{failure.errorType}</h3>
@@ -962,7 +964,7 @@ export function OpsDashboardClient() {
       <section className="grid-two">
         <article className="card">
           <h2>{i18n.t("ops_auto.ops_dashboard_client.platform_activity_sqbk04")}</h2>
-          <div className="stack-lg" style={{ paddingBottom: 0 }}>
+          <div className="stack-lg u-pb-0">
             {Object.entries(overview.activeUsersByPlatform).map(([platform, count]) => (
               <article className="list-panel" key={platform}>
                 <h3>{platform}</h3>
@@ -974,7 +976,7 @@ export function OpsDashboardClient() {
 
         <article className="card">
           <h2>{i18n.t("ops_auto.ops_dashboard_client.recommendation_performance_by_surface_fxqyv9")}</h2>
-          <div className="stack-lg" style={{ paddingBottom: 0 }}>
+          <div className="stack-lg u-pb-0">
             {overview.recommendationMetricsBySource.length === 0 ? (
               <p>{i18n.t("ops_auto.ops_dashboard_client.no_recommendation_conversion_data_recorded_yet_a3rnia")}</p>
             ) : (
@@ -1005,7 +1007,7 @@ export function OpsDashboardClient() {
       <section className="grid-two">
         <article className="card">
           <h2>{i18n.t("ops_auto.ops_dashboard_client.recent_telemetry_events_crou57")}</h2>
-          <div className="stack-lg" style={{ paddingBottom: 0 }}>
+          <div className="stack-lg u-pb-0">
             {overview.recentEvents.map((event) => (
               <article className="list-panel" key={event.id}>
                 <h3>{event.name}</h3>
@@ -1020,7 +1022,7 @@ export function OpsDashboardClient() {
           {overview.recentOpsAccessChanges.length === 0 ? (
             <p>{i18n.t("ops_auto.ops_dashboard_client.no_internal_access_changes_recorded_yet_wo11pd")}</p>
           ) : (
-            <div className="stack-lg" style={{ paddingBottom: 0 }}>
+            <div className="stack-lg u-pb-0">
               {overview.recentOpsAccessChanges.map((change) => (
                 <article className="list-panel" key={`${change.opsUserId}:${change.changedAt}:${change.kind}`}>
                   <h3>{change.opsUserName}</h3>
@@ -1044,7 +1046,7 @@ export function OpsDashboardClient() {
           {overview.recentOpsSignIns.length === 0 ? (
             <p>{i18n.t("ops_auto.ops_dashboard_client.no_internal_sign_ins_recorded_yet_1qjn20")}</p>
           ) : (
-            <div className="stack-lg" style={{ paddingBottom: 0 }}>
+            <div className="stack-lg u-pb-0">
               {overview.recentOpsSignIns.map((item) => (
                 <article className="list-panel" key={`${item.opsUserId}:${item.signedInAt}`}>
                   <h3>{item.opsUserName}</h3>
@@ -1067,7 +1069,7 @@ export function OpsDashboardClient() {
           {overview.recentOpsAuthenticationEvents.length === 0 ? (
             <p>{i18n.t("ops_auto.ops_dashboard_client.no_internal_auth_events_recorded_yet_jcfihv")}</p>
           ) : (
-            <div className="stack-lg" style={{ paddingBottom: 0 }}>
+            <div className="stack-lg u-pb-0">
               {overview.recentOpsAuthenticationEvents.map((event) => (
                 <article className="list-panel" key={`${event.opsUserId}:${event.occurredAt}:${event.kind}`}>
                   <h3>{event.opsUserName}</h3>
@@ -1103,7 +1105,7 @@ export function OpsDashboardClient() {
       <section className="grid-two">
         <article className="card">
           <h2>{i18n.t("ops_auto.ops_dashboard_client.recommendation_analytics_notes_pylilc")}</h2>
-          <div className="stack-lg" style={{ paddingBottom: 0 }}>
+          <div className="stack-lg u-pb-0">
             <p>
               {i18n.t("ops_auto.ops_dashboard_client.recommendation_telemetry_now_groups_search_demand_no_match_n8fqpn")} </p>
           </div>

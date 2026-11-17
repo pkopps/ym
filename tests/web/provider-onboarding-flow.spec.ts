@@ -46,7 +46,7 @@ test("provider signup reaches a complete, verified management profile", async ({
   await page.getByRole("button", { name: "+5 miles" }).first().click();
   await expect(page.getByText("Service radius updated.")).toBeVisible();
   await page.getByRole("button", { name: "Auto-accept" }).click();
-  await expect(page.getByText("Auto-accept is on for future crew matches.")).toBeVisible();
+  await expect(page.getByText("Auto-accept is on.")).toBeVisible();
 
   await page.getByRole("button", { name: "Publish opening" }).click();
   await expect(page.getByText("Opening published. Customers can request it after marketplace approval.")).toBeVisible();

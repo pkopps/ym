@@ -5,6 +5,7 @@ import { useI18n } from "@yardmatch/i18n/react";
 import { clearStoredSession, StoredWebSession } from "../lib/api";
 import { useStoredWebSession } from "../lib/session";
 import { LanguagePicker } from "./LanguagePicker";
+import { useLaunchFeatureFlags } from "./LaunchFeatureFlagsProvider";
 import { NotificationMenu } from "./NotificationMenu";
 
 const links = [
@@ -12,12 +13,6 @@ const links = [
   { href: "/provider", labelKey: "nav.for_providers" },
   { href: "/crew", labelKey: "nav.for_crews" },
   { href: "/help", labelKey: "nav.help_center" }
-] as const;
-
-const loginLinks = [
-  { href: "/login/customer", labelKey: "nav.customer_login" },
-  { href: "/login/provider", labelKey: "nav.business_owner_login" },
-  { href: "/login/crew", labelKey: "nav.crew_member_login" }
 ] as const;
 
 const accountLinks: Record<StoredWebSession["role"], Array<{ href: string; labelKey: TranslationKey }>> = {
@@ -38,7 +33,7 @@ const accountLinks: Record<StoredWebSession["role"], Array<{ href: string; label
     { href: "/account/security", labelKey: "security.title" }
   ],
   "crew-member": [
-    { href: "/crew", labelKey: "nav.user.open_work" },
+    { href: "/crew", labelKey: "ux.jobs" },
     { href: "/crew/schedule", labelKey: "nav.user.schedule" },
     { href: "/account/security", labelKey: "security.title" }
   ]
@@ -47,6 +42,7 @@ const accountLinks: Record<StoredWebSession["role"], Array<{ href: string; label
 export function NavBar() {
   const { session } = useStoredWebSession();
   const i18n = useI18n();
+  const { payments } = useLaunchFeatureFlags();
   const localizedHref = (href: string) => addLocalePrefix(href, i18n.locale);
 
   function handleSignOut() {
@@ -69,7 +65,6 @@ export function NavBar() {
           </span>
           <span className="brand-lockup__wordmark">
             <strong>{i18n.t("common.brand")}</strong>
-            <small>{i18n.t("nav.brand_tagline")}</small>
           </span>
         </a>
         <nav aria-label={i18n.t("nav.primary_aria")} className="site-header__nav">
@@ -88,7 +83,7 @@ export function NavBar() {
               <details className="profile-menu">
                 <summary className="profile-menu__summary">{session.fullName}</summary>
                 <div className="profile-menu__panel">
-                  {accountLinks[session.role].map((link) => (
+                  {accountLinks[session.role].filter((link) => payments || link.href !== "/provider/payments").map((link) => (
                     <a href={localizedHref(link.href)} key={link.href}>
                       {i18n.t(link.labelKey)}
                     </a>
@@ -101,16 +96,9 @@ export function NavBar() {
             </>
           ) : (
             <>
-              <details className="auth-menu">
-                <summary className="auth-menu__summary">{i18n.t("nav.log_in")}</summary>
-                <div className="auth-menu__panel">
-                  {loginLinks.map((link) => (
-                    <a key={link.href} href={localizedHref(link.href)}>
-                      {i18n.t(link.labelKey)}
-                    </a>
-                  ))}
-                </div>
-              </details>
+              <a className="button-secondary" href={localizedHref("/login")}>
+                {i18n.t("nav.log_in")}
+              </a>
               <a className="button" href={localizedHref("/auth")}>
                 {i18n.t("nav.sign_up")}
               </a>
