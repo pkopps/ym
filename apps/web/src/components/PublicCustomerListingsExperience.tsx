@@ -15,6 +15,7 @@ import { availabilityRange, openingLabel, serviceDay, uniqueOpenings, type Arriv
 import { buildCustomerListingsSearchParams, PublicMarketplaceSearchShell, type CustomerCustomTimingWindow, type CustomerTimingPreference } from "./PublicMarketplaceSearchShell";
 import { BookingScheduleModal } from "./BookingScheduleModal";
 import { LoadingSkeleton } from "./LoadingSkeleton";
+import { useLaunchFeatureFlags } from "./LaunchFeatureFlagsProvider";
 
 const DirectoryMap = dynamic(() => import("./ProviderDirectoryMap"), { ssr: false });
 type Props = {
@@ -110,7 +111,7 @@ export function PublicCustomerListingsExperience(props: Props) {
 }
 
 function JourneyProviderCard({ result, slots, recommended, selected, onSchedule }: { result: SearchProviderResult; slots: AvailabilitySlot[]; recommended: boolean; selected: boolean; onSchedule: (slot?: AvailabilitySlot) => void }) {
-  const i18n = useI18n(); const provider = result.provider;
+  const i18n = useI18n(); const provider = result.provider; const { payments } = useLaunchFeatureFlags();
   const [reviews, setReviews] = useState<PublicProviderReview[]>(); const [reviewError, setReviewError] = useState(false); const reviewsRequested = useRef(false);
   async function loadReviews() { if (reviewsRequested.current) return; reviewsRequested.current = true; setReviewError(false); try { setReviews(await createWebApiClient().getProviderReviews(provider.id)); } catch { reviewsRequested.current = false; setReviewError(true); } }
   return <article id={`provider-${provider.id}`} className={`live-provider-card journey-provider-card${recommended ? " journey-provider-card--recommended" : ""}${selected ? " journey-provider-card--selected" : ""}`}>
@@ -129,6 +130,6 @@ function JourneyProviderCard({ result, slots, recommended, selected, onSchedule 
     <div className="journey-openings"><span>{i18n.t("booking_journey.openings")}</span><div className="journey-slot-pills">{uniqueOpenings(slots).slice(0, 3).map(slot => <button key={slot.id} className="journey-slot-pill" type="button" onClick={() => onSchedule(slot)}>{openingLabel(i18n, slot.startIso)}</button>)}</div>
       {!slots.length ? <small>{i18n.t("booking_journey.openings.none")}</small> : null}
       <button className="journey-text-button" type="button" onClick={() => onSchedule(slots[0])}>{i18n.t("booking_journey.openings.other")}</button>
-    </div><small className="journey-provider-card__note">{i18n.t("booking_journey.book.no_charge")}</small>
+    </div><small className="journey-provider-card__note">{payments ? i18n.t("booking_journey.book.no_charge") : i18n.t("booking_terms.pay_directly", { provider: provider.companyName })}</small>
   </article>;
 }

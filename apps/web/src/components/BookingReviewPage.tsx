@@ -9,6 +9,7 @@ import { journeyApi, openingLabel, readBookingDraft, saveBookingDraft, type Book
 import { useStoredWebSession } from "../lib/session";
 import { getLaunchAttributionContext } from "../lib/launchAttribution";
 import { BookingScheduleModal } from "./BookingScheduleModal";
+import { BookingTerms } from "./BookingTerms";
 
 export function BookingReviewPage() {
   const i18n = useI18n(); const router = useRouter(); const params = useSearchParams(); const { session, sessionReady } = useStoredWebSession();
@@ -89,7 +90,7 @@ export function BookingReviewPage() {
       <h3>{i18n.t("booking_journey.services")}</h3><ul className="journey-price-lines">{draft.quotes.map(quote => <li key={quote.category}><span>{i18n.t(serviceCategoryLabelKeys[quote.category])}</span><strong>{i18n.formatCurrency(quote.estimatedPriceCents, "USD", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></li>)}</ul>
       <p className="journey-muted">{i18n.t("booking_journey.review.duration", { minutes: draft.quotes.reduce((sum, quote) => sum + quote.estimatedDurationMinutes, 0) })}</p>
       <button className="button-secondary" type="button" disabled={busy} onClick={() => setEditing(true)}>{i18n.t("booking_journey.review.edit")}</button>
-    </section><section className="card journey-review-total"><div className="journey-total"><span>{i18n.t("booking_journey.review.total")}</span><strong>{i18n.formatCurrency(draft.quotes.reduce((sum, quote) => sum + quote.estimatedPriceCents, 0), "USD", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></div><p>{i18n.t("booking_journey.book.no_charge")}</p>
+    </section><section className="card journey-review-total"><div className="journey-total"><span>{i18n.t("booking_journey.review.total")}</span><strong>{i18n.formatCurrency(draft.quotes.reduce((sum, quote) => sum + quote.estimatedPriceCents, 0), "USD", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></div><BookingTerms providerName={draft.provider.companyName} />
       {notice ? <p role="status">{notice}</p> : null}{error ? <div role="alert" className="journey-error"><p>{error}</p><button className="button-secondary" type="button" disabled={busy || loading} onClick={() => void refresh(draft)}>{i18n.t("booking_journey.review.refresh")}</button></div> : null}
       <label className="checkbox-field early-arrival-opt-in"><input type="checkbox" checked={draft.earlyArrivalOk === true} disabled={busy}
         onChange={event => { const next = { ...draft, earlyArrivalOk: event.target.checked }; saveBookingDraft(next); setDraft(next); }} />

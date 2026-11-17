@@ -118,9 +118,8 @@ test.describe.serial("customer booking golden path", () => {
     await expect(page.getByText("Selected match", { exact: true }).first()).toBeVisible();
     await expect(page.getByRole("heading", { level: 3, name: "GreenStride Lawn Co." })).toBeVisible();
     await expect(page.getByText("Open route window", { exact: true })).toBeVisible();
-    await expect(
-      page.getByText("No charge yet. The provider confirms before any payment is due.")
-    ).toBeVisible();
+    await expect(page.getByText("Free to cancel or reschedule until GreenStride Lawn Co. is on the way.")).toBeVisible();
+    await expect(page.getByText("No charge now. Your provider confirms before payment.").first()).toBeVisible();
     await page.screenshot({ path: `${evidenceRoot}/customer-quote-desktop.png`, fullPage: true });
     await page.getByRole("button", { name: "Request this time" }).click();
 
