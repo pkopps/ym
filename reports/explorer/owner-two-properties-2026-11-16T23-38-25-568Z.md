@@ -36,7 +36,8 @@
 - **Happened:** the booking is created for tomorrow, 8am (Nov 17). The price step and the match card both still show the chosen date ("Nov 25 Morning"). Reproduced twice (weekly plan and one-time cleanup).
 - **Screenshots:** `02-request-form-1440x900.png`, `03-dashboard-after-1440x900.png`
 
-### 2. A dashboard visit holds the provider's whole opening (bug, high: provider capacity)
+### 2. A dashboard visit holds the provider's whole opening (corrected: product question, not a bug)
+- **Correction:** openings are arrival windows (7–noon, noon–4, 4–8) and a booking reserves its window by design. The 8am–5pm span here came from the bot seed's nonstandard opening. Allowing several jobs per window would be a product decision.
 - **Repeat:** as above; open "Visit details".
 - **Happened:** a 123-minute mow and a 144-minute cleanup were each saved as 8:00 AM to 5:00 PM, the whole published opening. The provider can't take anything else that day, and the customer sees "Morning • 7:00 AM - 12:00 PM" while the visit is stored until 5 PM.
 
