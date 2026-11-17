@@ -445,7 +445,14 @@ const GENERIC_PROVIDER_APPROVAL_OVERRIDE_NOTES = [
   "provider looks ready for launch visibility."
 ] as const;
 
+
 export class MarketplacePlatformService {
+  /**
+   * How long before a visit's scheduled start the route, work start and completion become available. Only the legacy
+   * workflow test file widens it, because its scenarios run visits days ahead.
+   */
+  public static visitActionsOpenHoursBeforeStart = 3;
+
   private static readonly reviewInviteDelayHours = 48;
   private static readonly reviewInviteExpiryDays = 30;
   private static readonly liveRouteLocationStaleMinutes = 5;
@@ -674,9 +681,14 @@ export class MarketplacePlatformService {
     if (sourceAddress && !(await this.consumeSecurityLimit(`reset-source:${sourceAddress}`, 300, 600))) {
       throw new HttpError(429, "Too many recovery requests. Try again later.");
     }
-    // Identical cooldown behavior for real and nonexistent accounts; no account enumeration.
-    if (!(await this.consumeSecurityLimit(`reset-send:${email}`, 1, 60)) ||
-        !(await this.consumeSecurityLimit(`reset-hour:${email}`, 5, 3600))) return generic;
+    // Identical cooldown behavior for real and nonexistent accounts; no account enumeration. Saying so is safe for
+    // the same reason, and without it a person who just hit an expired code waits for an email that never comes.
+    if (!(await this.consumeSecurityLimit(`reset-send:${email}`, 1, 60))) {
+      return { success: true, message: "A code was just requested for this email. Wait a minute, then ask again if it hasn't arrived." };
+    }
+    if (!(await this.consumeSecurityLimit(`reset-hour:${email}`, 5, 3600))) {
+      return { success: true, message: "Too many codes were requested for this email. Try again in an hour." };
+    }
     const issued = await this.repository.withLock(`recovery:${hashDeviceIdentifier(email)}`, async (repository) => {
       const identity = await repository.findAuthIdentityByEmail(email);
       if (!identity?.passwordHash || identity.accessDisabledAt) return undefined;
@@ -1044,11 +1056,11 @@ export class MarketplacePlatformService {
     }
 
     if (!identity.resetPasswordCodeHash || !identity.resetPasswordExpiresAt) {
-      throw new HttpError(400, "Password reset code has expired");
+      throw new HttpError(400, "This code was already used or has expired. Ask for a new code.");
     }
 
     if (new Date(identity.resetPasswordExpiresAt).getTime() <= Date.now()) {
-      throw new HttpError(400, "Password reset code has expired");
+      throw new HttpError(400, "This code has expired. Ask for a new code.");
     }
 
     const expectedHash = hashPasswordResetCode(email, payload.resetCode.trim());
@@ -4343,6 +4355,16 @@ export class MarketplacePlatformService {
       const [crew, matches] = await Promise.all([this.repository.findCrewMemberById(match.crewMemberId), this.repository.listCrewMatchesForCrewMember(match.crewMemberId)]);
       const bookings = await this.listAcceptedCrewJobBookings(matches);
       if (!crew || !this.isCrewMemberEligibleForBooking(crew, currentBooking, matches, bookings)) throw new HttpError(409, "This crew member is no longer eligible for this assignment");
+      // The provider's staffing lock is held, so this count cannot change underneath us.
+      const [bookingMatches, customer] = await Promise.all([
+        this.repository.listCrewMatchesForBookings([currentBooking.id]),
+        this.repository.findCustomerById(currentBooking.customerId)
+      ]);
+      const property = customer?.properties.find((item) => item.id === currentBooking.servicePropertyId);
+      const accepted = bookingMatches.filter((item) => item.status === "accepted" && item.id !== match.id).length;
+      if (accepted >= this.estimateRequiredCrewMembers(currentBooking, property)) {
+        throw new HttpError(409, "This job already has the crew it needs. Deny this match or remove an accepted crew member first.");
+      }
     }
 
     if (payload.action === "accept") {
@@ -5186,6 +5208,7 @@ export class MarketplacePlatformService {
     if (booking.onRouteConfirmedAt) {
       return booking;
     }
+    this.assertVisitWindowOpen(booking, "start the route");
 
     const updatedBooking = await this.repository.updateBooking(booking.id, {
       onRouteConfirmedAt: new Date().toISOString(),
@@ -5552,7 +5575,7 @@ export class MarketplacePlatformService {
       { recipientId: booking.customerId, recipientRole: "customer" }, { recipientId: booking.providerId, recipientRole: "provider" }
     ];
     if (payload.action === "accept") {
-      for (const match of await this.repository.listCrewMatchesForBookings([booking.id])) {
+      for (const match of this.inCrewMemberOrder(await this.repository.listCrewMatchesForBookings([booking.id]))) {
         if (match.bookingId === booking.id && match.status === "accepted") {
           await this.repository.updateCrewMatch(match.id, { status: "pending-provider-review", reviewedAt: undefined, autoAccepted: false });
           await this.refreshCrewMemberStatus(match.crewMemberId);
@@ -6372,6 +6395,7 @@ export class MarketplacePlatformService {
     if (!booking.onRouteConfirmedAt) {
       throw new HttpError(400, "Confirm on route before starting work");
     }
+    this.assertVisitWindowOpen(booking, "start work");
 
     if (this.countBookingEvidence(booking, "before") < 1) {
       throw new HttpError(400, "Capture at least one before photo before starting work");
@@ -7071,11 +7095,11 @@ export class MarketplacePlatformService {
   ): Promise<Booking> {
     const booking = await this.repository.findBookingById(payload.bookingId);
     if (!booking) {
-      throw new Error("Booking not found");
+      throw new HttpError(404, "Booking not found");
     }
 
     if (booking.providerId !== providerId) {
-      throw new Error("Only the booking provider can mark the service completed");
+      throw new HttpError(403, "Only the booking provider can mark the service completed");
     }
 
     if (
@@ -7083,11 +7107,13 @@ export class MarketplacePlatformService {
       booking.status !== "confirmed" &&
       booking.status !== "in-progress"
     ) {
-      throw new Error("Bookings must be confirmed before the provider can complete them");
+      throw new HttpError(400, "Bookings must be confirmed before the provider can complete them");
     }
 
+    if (booking.status !== "completed") this.assertVisitWindowOpen(booking, "mark it complete");
+
     if (this.countBookingEvidence(booking, "after") < 1) {
-      throw new Error("Capture at least one after photo before completing the booking");
+      throw new HttpError(400, "Capture at least one after photo before completing the booking");
     }
 
     const wasAlreadyCompleted = booking.status === "completed" && Boolean(booking.completedAt);
@@ -7095,6 +7121,10 @@ export class MarketplacePlatformService {
     const updatedBooking = await this.repository.updateBooking(booking.id, {
       status: "completed",
       completedAt,
+      // The visit is over; keep no live GPS position once tracking has ended.
+      routeLivePoint: undefined,
+      routeLiveSpeedMph: undefined,
+      routeLiveAccuracyMeters: undefined,
       activeExceptionType: undefined,
       activeExceptionReportedAt: undefined,
       activeExceptionNotes: undefined
@@ -7167,6 +7197,14 @@ export class MarketplacePlatformService {
     providerId: string,
     payload: ConfirmBookingRequest
   ): Promise<Booking> {
+    // Same lock as cancel and decline: a confirm racing an owner's cancel must not overwrite it.
+    return this.repository.withLock(`booking:${payload.bookingId}`, repository => this.withRepository(repository).confirmBookingRecord(providerId, payload));
+  }
+
+  private async confirmBookingRecord(
+    providerId: string,
+    payload: ConfirmBookingRequest
+  ): Promise<Booking> {
     const booking = await this.repository.findBookingById(payload.bookingId);
     if (!booking) {
       throw new HttpError(404, "Booking not found");
@@ -7193,7 +7231,7 @@ export class MarketplacePlatformService {
       await this.assertBookingProviderEligible(booking.providerId, category, booking.serviceAddress);
     }
     this.validateBookingWindow(booking.scheduledStartIso, booking.scheduledEndIso);
-    await this.assertProviderWindowIsAvailable(booking.providerId, booking.scheduledStartIso, booking.scheduledEndIso);
+    await this.assertProviderWindowIsAvailable(booking.providerId, booking.scheduledStartIso, booking.scheduledEndIso, booking.id);
 
     const updatedBooking = await this.repository.updateBooking(booking.id, {
       status: "confirmed"
@@ -7480,16 +7518,21 @@ export class MarketplacePlatformService {
 
   private async createBookingWithRequestLock(customerId: string, payload: CreateBookingRequest): Promise<Booking> {
     const parsed = this.parseBookingRequest(payload);
-    if (!parsed.services) return this.createBookingRecord(customerId, parsed);
-    if (!parsed.requestId || !/^[a-zA-Z0-9-]{16,80}$/.test(parsed.requestId)) throw new HttpError(400, "A booking request identifier is required.");
+    const validRequestId = Boolean(parsed.requestId && /^[a-zA-Z0-9-]{16,80}$/.test(parsed.requestId));
+    // A request id makes a resubmit (a double tap or a retry) return the first booking instead of making a second.
+    if (!parsed.services && !validRequestId) return this.createBookingRecord(customerId, parsed);
+    if (!validRequestId) throw new HttpError(400, "A booking request identifier is required.");
     const bookingId = `request-${hashDeviceIdentifier(`${customerId}:${parsed.requestId}`)}`;
+    // A single-service booking is stored with an empty services list in Postgres and none in memory; compare categories.
+    const serviceCategoriesKey = (item: { services?: Array<{ category: string }>; category: string }) =>
+      (item.services?.length ? item.services.map(service => service.category) : [item.category]).join(",");
     return this.repository.withLock(`booking-provider:${parsed.providerId}`, async repository => {
       const existing = await repository.findBookingById(bookingId);
       if (existing) {
         if (existing.customerId !== customerId || existing.providerId !== parsed.providerId || existing.totalCents !== parsed.totalCents ||
           existing.scheduledStartIso !== parsed.scheduledStartIso || existing.scheduledEndIso !== parsed.scheduledEndIso || existing.category !== parsed.category ||
           this.quoteAddressKey(existing.serviceAddress) !== this.quoteAddressKey(parsed.serviceAddress) ||
-          JSON.stringify(existing.services?.map(item => item.category)) !== JSON.stringify(parsed.services?.map(item => item.category))) {
+          serviceCategoriesKey(existing) !== serviceCategoriesKey(parsed)) {
           throw new HttpError(409, "This booking request was already used. Review your existing booking before making another.");
         }
         return existing;
@@ -8162,7 +8205,7 @@ export class MarketplacePlatformService {
   }
 
   private async reconfirmCrewAfterBookingChange(booking: Booking, message: string, cancel = false): Promise<void> {
-    for (const match of await this.repository.listCrewMatchesForBookings([booking.id])) {
+    for (const match of this.inCrewMemberOrder(await this.repository.listCrewMatchesForBookings([booking.id]))) {
       if (match.bookingId !== booking.id || !["accepted", "pending-provider-review"].includes(match.status)) continue;
       await this.repository.updateCrewMatch(match.id, { status: cancel ? "denied" : "pending-provider-review", reviewedAt: undefined, autoAccepted: false });
       await this.refreshCrewMemberStatus(match.crewMemberId);
@@ -17100,8 +17143,6 @@ export class MarketplacePlatformService {
     scheduledStartIso: string,
     scheduledEndIso: string
   ): Promise<void> {
-    await this.assertProviderWindowIsAvailable(providerId, scheduledStartIso, scheduledEndIso);
-
     const overlappingBooking = (await this.repository.listScopedBookings({ providerId, endAfter: scheduledStartIso, excludeStatuses: ["cancelled", "completed", "refunded"] })).find(
       (booking) =>
         booking.providerId === providerId &&
@@ -17123,17 +17164,45 @@ export class MarketplacePlatformService {
         "That provider window overlaps another YardMatch job. Pick a different service window."
       );
     }
+    await this.assertProviderWindowIsAvailable(providerId, scheduledStartIso, scheduledEndIso, bookingId);
+  }
+
+  /**
+   * Route start, work start and completion open this long before the scheduled start. Earlier, a mistaken tap tells the
+   * customer the crew is on the way the night before, and an early completion frees a slot that is still booked.
+   */
+  private assertVisitWindowOpen(booking: Pick<Booking, "scheduledStartIso">, action: string): void {
+    const hours = MarketplacePlatformService.visitActionsOpenHoursBeforeStart;
+    const opensAt = Date.parse(booking.scheduledStartIso) - hours * 3_600_000;
+    if (Date.now() < opensAt) {
+      const opens = new Date(opensAt).toLocaleString("en-US", { timeZone: "America/New_York", weekday: "short", hour: "numeric", minute: "2-digit" });
+      throw new HttpError(409, `You can ${action} from ${opens} ET, ${hours} hours before the visit.`);
+    }
   }
 
   private async assertProviderWindowIsAvailable(
     providerId: string,
     scheduledStartIso: string,
-    scheduledEndIso: string
+    scheduledEndIso: string,
+    excludeBookingId?: string
   ): Promise<void> {
     this.validateBookingWindow(scheduledStartIso, scheduledEndIso);
     const provider = await this.repository.findProviderById(providerId);
     if (!provider) {
       throw new HttpError(404, "Provider not found");
+    }
+
+    // A provider does one visit at a time. Requested visits hold their time too, as search already assumes when it
+    // lists openings; a declined visit waiting on the customer's recovery choice does not.
+    const overlappingBooking = (await this.repository.listScopedBookings({
+      providerId, endAfter: scheduledStartIso, excludeStatuses: ["cancelled", "completed", "refunded"]
+    })).find((booking) =>
+      booking.id !== excludeBookingId &&
+      booking.providerId === providerId &&
+      booking.recovery?.state !== "open" &&
+      this.doIntervalsOverlap(booking.scheduledStartIso, booking.scheduledEndIso, scheduledStartIso, scheduledEndIso));
+    if (overlappingBooking) {
+      throw new HttpError(409, "That time is no longer open with this provider. Pick another opening.");
     }
 
     const overlapsExternalBlock = this.getActiveExternalCalendarBlocks(provider).some((block) =>
@@ -19202,9 +19271,17 @@ export class MarketplacePlatformService {
         new Date(match.createdAt).getTime() > Date.now() - 90 * 24 * 60 * 60 * 1000
     );
 
-    await this.repository.updateCrewMember(crewMemberId, {
-      status: hasAcceptedFutureMatch ? "assigned" : "available"
-    });
+    // Write only on a change: every write locks the crew row until the caller's transaction ends, and concurrent
+    // booking changes that touch the same crew members deadlocked on these no-op updates.
+    const status = hasAcceptedFutureMatch ? "assigned" : "available";
+    if (crewMember.status !== status) {
+      await this.repository.updateCrewMember(crewMemberId, { status });
+    }
+  }
+
+  /** Crew matches in crew-member order, so transactions that update several crew rows lock them in the same order. */
+  private inCrewMemberOrder<T extends { crewMemberId: string; id: string }>(matches: T[]): T[] {
+    return [...matches].sort((a, b) => a.crewMemberId.localeCompare(b.crewMemberId) || a.id.localeCompare(b.id));
   }
 
   private isCrewMemberEligibleForBooking(
