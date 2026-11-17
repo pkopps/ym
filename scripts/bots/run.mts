@@ -57,9 +57,19 @@ recorder.writeJson("config.json", { ...counts, seed, bookingsPerOwner, concurren
 
 const env = await startLocalEnvironment({ fresh: !args["keep-db"], connectionLimit: 10, log, apiLogPath: join(recorder.dir, "api.log") });
 const prisma = new PrismaClient({ datasourceUrl: env.databaseUrl.toString() });
+// Each worked visit gets its own one-minute slot in the recent past, two minutes apart across every provider, so moving
+// it never puts two visits on one provider or crew member at once. Booked visits start at least a day out, so the
+// recent past is free. Local test database only (guarded above).
+let workedVisits = 0;
+const runStartedAt = Date.now();
 const settings: BotSettings = {
   baseUrl: env.apiBaseUrl, runId: `bot${seed}`, recorder, zones: BARNEGAT_MARKET, radiusMiles: [8, 20], horizonDays: 14,
-  timing: { minDelayMs: Number(args["min-delay"]), maxDelayMs: Number(args["max-delay"]) }
+  timing: { minDelayMs: Number(args["min-delay"]), maxDelayMs: Number(args["max-delay"]) },
+  bringVisitIntoWindow: async bookingId => {
+    workedVisits += 1;
+    const start = new Date(runStartedAt - workedVisits * 2 * 60_000);
+    await prisma.booking.update({ where: { id: bookingId }, data: { scheduledStartIso: start, scheduledEndIso: new Date(start.getTime() + 60_000) } });
+  }
 };
 const started = Date.now();
 let exitCode = 0;
@@ -105,7 +115,7 @@ try {
           // Double-tap submit: the same request twice at once with one request id.
           stats.races += 1;
           const requestId = `${owner.id}-${attempt}`;
-          const results = await Promise.allSettled([book(owner, draft, { requestId, action: "double-tap" }), book(owner, draft, { requestId, action: "double-tap" })]);
+          const results = await Promise.allSettled([book(owner, draft, { requestId, action: "double-tap", expect: [409] }), book(owner, draft, { requestId, action: "double-tap", expect: [409] })]);
           const ids = results.flatMap(item => item.status === "fulfilled" ? [item.value.id] : []);
           recorder.event({ botId: owner.client.botId, action: "race-double-tap", bookingId: ids[0], detail: { ids } });
           for (const id of new Set(ids)) recorder.event({ botId: owner.client.botId, action: "book", bookingId: id, detail: { via: "double-tap" } });
@@ -126,7 +136,8 @@ try {
           stats.booked += ids.length;
           continue;
         }
-        const created = await book(owner, draft, { recurring });
+        // Another owner may already hold this time; the API refuses with 409, and that is the rule working.
+        const created = await book(owner, draft, { recurring, expect: [409] });
         const bookingId = bookingIdFromCreate(created) ?? created.id;
         recorder.event({ botId: owner.client.botId, action: recurring ? "book-recurring" : "book", bookingId, planId: recurring ? created.plan?.id ?? created.id : undefined, detail: { providerId: draft.providerId, startIso: draft.startIso, recurring } });
         stats.booked += 1;
