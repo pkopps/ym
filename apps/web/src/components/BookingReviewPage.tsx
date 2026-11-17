@@ -9,6 +9,7 @@ import { journeyApi, openingLabel, readBookingDraft, saveBookingDraft, type Book
 import { useStoredWebSession } from "../lib/session";
 import { getLaunchAttributionContext } from "../lib/launchAttribution";
 import { BookingScheduleModal } from "./BookingScheduleModal";
+import { BookingTerms } from "./BookingTerms";
 
 export function BookingReviewPage() {
   const i18n = useI18n(); const router = useRouter(); const params = useSearchParams(); const { session, sessionReady } = useStoredWebSession();
@@ -89,7 +90,7 @@ export function BookingReviewPage() {
       <h3>{i18n.t("booking_journey.services")}</h3><ul className="journey-price-lines">{draft.quotes.map(quote => <li key={quote.category}><span>{i18n.t(serviceCategoryLabelKeys[quote.category])}</span><strong>{i18n.formatCurrency(quote.estimatedPriceCents, "USD", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></li>)}</ul>
       <p className="journey-muted">{i18n.t("booking_journey.review.duration", { minutes: draft.quotes.reduce((sum, quote) => sum + quote.estimatedDurationMinutes, 0) })}</p>
       <button className="button-secondary" type="button" disabled={busy} onClick={() => setEditing(true)}>{i18n.t("booking_journey.review.edit")}</button>
-    </section><section className="card journey-review-total"><div className="journey-total"><span>{i18n.t("booking_journey.review.total")}</span><strong>{i18n.formatCurrency(draft.quotes.reduce((sum, quote) => sum + quote.estimatedPriceCents, 0), "USD", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></div><p>{i18n.t("booking_journey.book.no_charge")}</p>
+    </section><section className="card journey-review-total"><div className="journey-total"><span>{i18n.t("booking_journey.review.total")}</span><strong>{i18n.formatCurrency(draft.quotes.reduce((sum, quote) => sum + quote.estimatedPriceCents, 0), "USD", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></div><BookingTerms providerName={draft.provider.companyName} />
       {notice ? <p role="status">{notice}</p> : null}{error ? <div role="alert" className="journey-error"><p>{error}</p><button className="button-secondary" type="button" disabled={busy || loading} onClick={() => void refresh(draft)}>{i18n.t("booking_journey.review.refresh")}</button></div> : null}
       {session?.role === "customer" ? <button className="button" type="button" disabled={busy || loading || !ready} onClick={() => void confirm()}>{i18n.t(busy ? "booking_journey.review.confirming" : loading ? "booking_journey.book.checking" : "booking_journey.review.confirm")}</button>
         : <div className="journey-auth"><h3>{i18n.t("booking_journey.review.auth")}</h3><p>{i18n.t(session ? "booking_journey.review.wrong_role" : "booking_journey.review.auth_body")}</p><Link className="button" href={addLocalePrefix(`/login?returnTo=${encodeURIComponent(returnTo)}`, i18n.locale)}>{i18n.t("booking_journey.review.login")}</Link><Link className="button-secondary" href={addLocalePrefix(`/auth/customer?${signupParams}`, i18n.locale)}>{i18n.t("booking_journey.review.signup")}</Link></div>}

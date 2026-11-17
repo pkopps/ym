@@ -5450,6 +5450,13 @@ body:has(.compact-header) .customer-request-spine__index { width: 1.5rem; height
 .journey-dialog { width: min(680px, calc(100vw - 32px)); max-height: calc(100dvh - 40px); padding: 0; border: 1px solid var(--ym-color-border); border-radius: var(--ym-radius-lg); box-shadow: var(--ym-shadow-soft); background: var(--ym-color-white); color: var(--ym-color-ink); overflow-y: auto; }
 .journey-dialog::backdrop { background: color-mix(in srgb, var(--ym-color-ink) 42%, transparent); backdrop-filter: blur(3px); }
 .journey-dialog--location { max-width: 470px; }
+.journey-dialog--confirm { max-width: 480px; }
+.confirm-action__body { display: grid; gap: var(--ym-space-3); margin-bottom: var(--ym-space-5); }
+.confirm-action__body p, .confirm-action__body dl { margin: 0; }
+.confirm-action__actions { display: grid; gap: var(--ym-space-3); }
+.booking-terms { display: grid; gap: var(--ym-space-2); padding-top: var(--ym-space-3); border-top: 1px solid var(--ym-color-border); font-size: var(--ym-text-sm); color: var(--ym-color-muted); }
+.booking-terms p { margin: 0; }
+.booking-terms a { color: var(--ym-color-primary-strong); font-weight: 600; text-decoration: underline; text-underline-offset: 0.18em; justify-self: start; }
 .journey-dialog__content { padding: 1.75rem; }
 .journey-dialog__header { display: flex; align-items: start; gap: var(--ym-space-4); justify-content: space-between; margin-bottom: var(--ym-space-5); }
 .journey-dialog__header h2 { font-size: var(--ym-text-xl); margin: 0 0 var(--ym-space-2); }
