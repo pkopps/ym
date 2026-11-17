@@ -22,7 +22,8 @@ test("crew selects a fit, creates preferences, receives work, routes, and sees c
     customerToken: customer.token,
     providerId: provider.providerId,
     customerName: "Crew Route Customer",
-    hoursFromNow: 50
+    // Crew can start the route from 3 hours before the visit.
+    hoursFromNow: 2
   });
 
   await page.setViewportSize({ width: 1440, height: 900 });

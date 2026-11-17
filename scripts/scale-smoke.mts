@@ -44,6 +44,8 @@ prisma.$on("query", event => {
     slowestQueries = [...slowestQueries, { ms: event.duration, sql: event.query.replace(/\s+/g, " ").slice(0, 400) }].sort((a, b) => b.ms - a.ms).slice(0, 3);
   }
 });
+// The recurring workload completes seeded visits days ahead; widen the window that holds completion near the visit.
+MarketplacePlatformService.visitActionsOpenHoursBeforeStart = 24 * 365;
 const repository = new PrismaMarketplaceRepository(prisma), fixtures = new InMemoryMarketplaceRepository();
 const analytics = new ProductAnalytics(prisma), platform = new MarketplacePlatformService(repository, analytics);
 const [template] = await fixtures.listProviders();

@@ -18,7 +18,8 @@ test("provider confirms, routes, proves, completes, and can decline a second req
     customerToken: primaryCustomer.token,
     providerId: provider.providerId,
     customerName: "Taylor First Job",
-    hoursFromNow: 48
+    // Route start and completion open 3 hours before the visit.
+    hoursFromNow: 2
   });
   await createBooking(request, {
     customerToken: declineCustomer.token,

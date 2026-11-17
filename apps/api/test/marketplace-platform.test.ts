@@ -13,6 +13,10 @@ import { ValidatedEvidenceImage } from "../src/media/imageValidation";
 import { PaymentCheckoutGateway } from "../src/services/StripeCheckoutService";
 import { StripeConnectGateway } from "../src/services/StripeConnectService";
 
+// These workflow scenarios work visits scheduled days ahead. The window that keeps route, start and completion near
+// the scheduled time has its own tests in visit-actions-window.test.ts.
+MarketplacePlatformService.visitActionsOpenHoursBeforeStart = 24 * 365;
+
 function createAddress(
   line1 = "112 Garden Row",
   latitude = 30.2435,
@@ -12470,6 +12474,8 @@ test("providers can assign a specific route leader when multiple accepted crew m
     phone: "555-4376",
     role: "customer",
     propertyLabel: "Primary home",
+    // Over 5,000 sq ft, so the job needs two crew and both accepted matches fit.
+    lawnSizeSqFt: 7200,
     address: createAddress("112 Garden Row", 30.2435, -97.7638)
   });
   const firstCrew = await platform.registerUser({
@@ -12604,6 +12610,8 @@ test("provider assistant can assign and clear a crew route leader from plain lan
     phone: "555-4380",
     role: "customer",
     propertyLabel: "Primary home",
+    // Over 5,000 sq ft, so the job needs two crew and both accepted matches fit.
+    lawnSizeSqFt: 7200,
     address: createAddress("112 Garden Row", 30.2435, -97.7638)
   });
   const firstCrew = await platform.registerUser({
@@ -13733,6 +13741,8 @@ test("provider assistant staffing plan recommends route leader assignment when c
     phone: "555-43953",
     role: "customer",
     propertyLabel: "Primary home",
+    // Over 5,000 sq ft, so the job needs two crew and both accepted matches fit.
+    lawnSizeSqFt: 7200,
     address: createAddress("112 Garden Row", 30.2435, -97.7638)
   });
   const firstCrew = await platform.registerUser({
