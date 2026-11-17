@@ -1,5 +1,19 @@
 # Engineer Status
 
+## Current checkpoint: booking terms and confirmations
+
+- Updated: November 17, 2026 (UTC).
+- Branch and commit: `claude/cancellation-terms-confirmations`; see the PR for the commit.
+- Completed: two short lines at the point of booking (review page and dashboard): free to cancel or reschedule until the provider is on the way, and how you pay (at launch, the provider directly). Starting a recurring plan, cancelling a visit and ending a plan now ask first in a centered dialog that says what happens. One-time requests still go straight through. A single upcoming visit can now be cancelled from its card (it had no cancel). The cancellation policy page states the real rule.
+- In progress: none.
+- Remaining: a late-cancellation fee, if wanted, is a product decision; reschedule is still only reachable from "Visit details" on additional visits.
+- Blockers: none.
+- Changed workflows: customers confirm before starting a plan, cancelling a visit or ending a plan.
+- Validation: `npm run typecheck`; `npm run lint` with `--ignore-pattern '.claude/**'`; `npm run i18n:validate`; `npm run test:web:smoke` (62 passed, including the new `customer-confirmations.spec.ts`); browser pass with launch flags off (terms lines, plan dialog, plan created on the chosen date).
+- Known defects: none found.
+- Screenshot paths: `reports/agent-checkpoints/engineer/latest/customer-cancel-confirmation-desktop.png`, `…-mobile.png`.
+- Recommended next task: early-arrival offers from providers.
+
 ## Current checkpoint: fixes for the bot army's top findings
 
 - Updated: November 17, 2026 (UTC).

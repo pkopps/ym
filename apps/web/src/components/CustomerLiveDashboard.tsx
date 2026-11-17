@@ -6,6 +6,7 @@ import { PaymentMethodGuide } from "./PaymentMethodGuide";
 import { BookingSchedulePanel } from "./BookingSchedulePanel";
 
 import {
+  type Address,
   BookingArrivalTracking,
   Booking,
   buildCustomerProviderChoicePresentations,
@@ -53,6 +54,8 @@ import {
   getCustomerTimingLabel
 } from "./PublicMarketplaceSearchShell";
 import { availabilityRange, serviceDay } from "../lib/bookingJourney";
+import { BookingTerms } from "./BookingTerms";
+import { ConfirmActionDialog } from "./ConfirmActionDialog";
 
 /** The search window for a timing choice: that day's arrival window, or the whole day for a date range. */
 export function searchWindowForTiming(timing: CustomerTimingPreference, customDate: string | undefined, customWindow: CustomerCustomTimingWindow) {
@@ -100,6 +103,14 @@ const propertyPhotoAreaOptions: Array<{ value: PropertyPhotoArea; labelKey: Tran
 
 function formatOpenWindow(i18n: I18nInstance, slot?: SearchProvidersResponse["suggestedSlots"][number]) {
   return slot ? formatBookingWindowSummary(slot.startIso) : i18n.t("customer_live.no_open_slot");
+}
+
+function formatVisitDay(i18n: I18nInstance, iso: string) {
+  return i18n.formatDate(iso, { timeZone: "America/New_York", weekday: "short", month: "short", day: "numeric" });
+}
+
+function formatAddress(address: Address) {
+  return [address.line1, address.line2].filter(Boolean).join(", ") + `, ${address.city}, ${address.state}`;
 }
 
 function formatProviderTrust(i18n: I18nInstance, provider: MarketplaceProviderProfile) {
@@ -336,6 +347,10 @@ export function CustomerLiveDashboard() {
   const [quote, setQuote] = useState<InstantQuoteResponse | undefined>();
   const [providerResults, setProviderResults] = useState<SearchProvidersResponse | undefined>();
   const [loadingState, setLoadingState] = useState<"idle" | "loading">("idle");
+  // Requests, plan starts, cancellations and plan endings each wait for a confirmation that states what will happen.
+  const [pendingRequest, setPendingRequest] = useState<{ card: Parameters<typeof handleCreateBooking>[0]; rank: number }>();
+  const [pendingCancel, setPendingCancel] = useState<{ booking: Booking; providerName: string }>();
+  const [pendingEndPlan, setPendingEndPlan] = useState<RecurringServicePlanSummary>();
   const [providerSearchState, setProviderSearchState] = useState<"idle" | "loading" | "loaded">("idle");
   const [selectedCadence, setSelectedCadence] = useState<"one-time" | RecurringServiceFrequency>("one-time");
   const [showAlternativeProviders, setShowAlternativeProviders] = useState(false);
@@ -1190,6 +1205,13 @@ export function CustomerLiveDashboard() {
     }
   }
 
+  // A one-time request goes straight to the provider, who confirms it anyway. A recurring plan commits the customer to
+  // repeat visits, so it gets a summary first.
+  function requestOrConfirm(card: Parameters<typeof handleCreateBooking>[0], rank: number) {
+    if (selectedCadence === "one-time") void handleCreateBooking(card, rank);
+    else setPendingRequest({ card, rank });
+  }
+
   async function handleCancelBooking(bookingId: string) {
     setLoadingState("loading");
     setErrorMessage(undefined);
@@ -1851,7 +1873,7 @@ export function CustomerLiveDashboard() {
                   <button
                     className="button-secondary"
                     disabled={loadingState === "loading"}
-                    onClick={() => void handleCancelBooking(booking.id)}
+                    onClick={() => setPendingCancel({ booking, providerName })}
                     type="button"
                   >
                     {i18n.t("customer_live.action.cancel_booking")}
@@ -2107,7 +2129,7 @@ export function CustomerLiveDashboard() {
             <button
               className="button-secondary"
               disabled={loadingState === "loading"}
-              onClick={() => void handleCancelRecurringPlan(summary.plan.id)}
+              onClick={() => setPendingEndPlan(summary)}
               type="button"
             >
               {i18n.t("customer_live.plan.cancel")}
@@ -2564,7 +2586,7 @@ export function CustomerLiveDashboard() {
 
                       {recommendedChoicePresentation ? <p>{recommendedChoicePresentation.detail}</p> : null}
                       {selectedCadence === "one-time" ? (
-                        <p>{i18n.t("customer_live.no_charge_provider_reviews")}</p>
+                        <BookingTerms providerName={recommendedProviderCard.provider.companyName} />
                       ) : null}
                       {recommendedProviderCard.ranking || recommendedChoicePresentation ? (
                         <details className="service-card-disclosure">
@@ -2610,10 +2632,7 @@ export function CustomerLiveDashboard() {
                           className="button"
                           disabled={!recommendedProviderCard.slot || loadingState === "loading"}
                           data-analytics-action="request-booking" onClick={() =>
-                            void handleCreateBooking(
-                              recommendedProviderCard,
-                              getProviderSelectionRank(recommendedProviderCard.provider.id, 1)
-                            )
+                            requestOrConfirm(recommendedProviderCard, getProviderSelectionRank(recommendedProviderCard.provider.id, 1))
                           }
                           type="button"
                         >
@@ -2694,10 +2713,7 @@ export function CustomerLiveDashboard() {
                             className="button live-provider-card__action"
                             disabled={!slot || loadingState === "loading"}
                             onClick={() =>
-                              void handleCreateBooking(
-                                { provider, ranking, slot },
-                                getProviderSelectionRank(provider.id, index + 2)
-                              )
+                              requestOrConfirm({ provider, ranking, slot }, getProviderSelectionRank(provider.id, index + 2))
                             }
                             type="button"
                           >
@@ -2884,6 +2900,18 @@ export function CustomerLiveDashboard() {
                         >
                           {i18n.t("crew_live.action.get_help")}
                         </a>
+                      ) : null}
+                      {/* The same rule as the API: cancellable until the provider is on the way or the visit starts. */}
+                      {(nextBooking.status === "requested" || nextBooking.status === "confirmed") && !nextBooking.onRouteConfirmedAt &&
+                        Date.parse(nextBooking.scheduledStartIso) > Date.now() ? (
+                        <button
+                          className="button-secondary"
+                          disabled={loadingState === "loading"}
+                          onClick={() => setPendingCancel({ booking: nextBooking, providerName: nextBookingProviderName })}
+                          type="button"
+                        >
+                          {i18n.t("customer_live.action.cancel_booking")}
+                        </button>
                       ) : null}
                     </div>
                   </div>
@@ -3093,6 +3121,64 @@ export function CustomerLiveDashboard() {
           subtitle={chatThread.thread.providerName}
           title={i18n.t("customer_live.chat.title")}
         />
+      ) : null}
+      {pendingRequest && activeProperty && pendingRequest.card.slot ? (
+        <ConfirmActionDialog
+          title={i18n.t("customer_live.confirm_request.title_plan")}
+          confirmLabel={i18n.t("customer_live.confirm_request.start_plan")}
+          cancelLabel={i18n.t("customer_live.confirm_request.back")}
+          busy={loadingState === "loading"}
+          onClose={() => setPendingRequest(undefined)}
+          onConfirm={() => {
+            const { card, rank } = pendingRequest;
+            void handleCreateBooking(card, rank).finally(() => setPendingRequest(undefined));
+          }}
+        >
+          <dl className="journey-summary">
+            <div><dt>{i18n.t("customer_live.confirm_request.provider")}</dt><dd>{pendingRequest.card.provider.companyName}</dd></div>
+            <div><dt>{i18n.t("customer_live.confirm_request.when")}</dt><dd>{formatVisitDay(i18n, pendingRequest.card.slot.startIso)} · {formatOpenWindow(i18n, pendingRequest.card.slot)}</dd></div>
+            <div><dt>{i18n.t("customer_live.confirm_request.where")}</dt><dd>{activeProperty.label}: {formatAddress(activeProperty.address)}</dd></div>
+            {selectedCadence === "one-time" ? null : <div><dt>{i18n.t("customer_live.confirm_request.repeats")}</dt><dd>{formatRecurringFrequency(i18n, selectedCadence)}</dd></div>}
+            {quote ? <div><dt>{i18n.t("customer_live.confirm_request.price")}</dt><dd>{i18n.formatCurrency(quote.estimatedPriceCents, "USD", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</dd></div> : null}
+          </dl>
+          <BookingTerms providerName={pendingRequest.card.provider.companyName} />
+        </ConfirmActionDialog>
+      ) : null}
+      {pendingCancel ? (
+        <ConfirmActionDialog
+          title={i18n.t("customer_live.confirm_cancel.title")}
+          confirmLabel={i18n.t("customer_live.confirm_cancel.confirm")}
+          cancelLabel={i18n.t("customer_live.confirm_cancel.keep")}
+          destructive
+          busy={loadingState === "loading"}
+          onClose={() => setPendingCancel(undefined)}
+          onConfirm={() => {
+            const { booking } = pendingCancel;
+            void handleCancelBooking(booking.id).finally(() => setPendingCancel(undefined));
+          }}
+        >
+          <p>{i18n.t("customer_live.confirm_cancel.body", {
+            when: `${formatVisitDay(i18n, pendingCancel.booking.scheduledStartIso)} · ${formatBookingWindowSummary(pendingCancel.booking.scheduledStartIso)}`,
+            address: formatAddress(pendingCancel.booking.serviceAddress),
+            provider: pendingCancel.providerName
+          })}</p>
+        </ConfirmActionDialog>
+      ) : null}
+      {pendingEndPlan ? (
+        <ConfirmActionDialog
+          title={i18n.t("customer_live.confirm_end_plan.title")}
+          confirmLabel={i18n.t("customer_live.confirm_end_plan.confirm")}
+          cancelLabel={i18n.t("customer_live.confirm_end_plan.keep")}
+          destructive
+          busy={loadingState === "loading"}
+          onClose={() => setPendingEndPlan(undefined)}
+          onConfirm={() => {
+            const planId = pendingEndPlan.plan.id;
+            void handleCancelRecurringPlan(planId).finally(() => setPendingEndPlan(undefined));
+          }}
+        >
+          <p>{i18n.t("customer_live.confirm_end_plan.body", { provider: pendingEndPlan.providerName })}</p>
+        </ConfirmActionDialog>
       ) : null}
     </main>
   );
