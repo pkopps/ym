@@ -1,0 +1,126 @@
+{
+  "providers": 40,
+  "crew": {
+    "jobsNeedingCrew": 222,
+    "fillRate": 1,
+    "medianHoursToFill": 0
+  },
+  "owners": 150,
+  "requests": 300,
+  "searchFillRate": 1,
+  "bookedRate": 1,
+  "deadZones": [],
+  "unmatched": {
+    "noProviderForServiceInRange": 0,
+    "providersButNoOpenSlot": 0
+  },
+  "zips": [
+    {
+      "postalCode": "08092",
+      "city": "West Creek",
+      "searches": 7,
+      "matched": 7,
+      "booked": 7,
+      "fillRate": 1
+    },
+    {
+      "postalCode": "08005",
+      "city": "Barnegat",
+      "searches": 96,
+      "matched": 96,
+      "booked": 96,
+      "fillRate": 1
+    },
+    {
+      "postalCode": "08758",
+      "city": "Waretown",
+      "searches": 21,
+      "matched": 21,
+      "booked": 21,
+      "fillRate": 1
+    },
+    {
+      "postalCode": "08731",
+      "city": "Forked River",
+      "searches": 39,
+      "matched": 39,
+      "booked": 39,
+      "fillRate": 1
+    },
+    {
+      "postalCode": "08050",
+      "city": "Manahawkin",
+      "searches": 55,
+      "matched": 55,
+      "booked": 55,
+      "fillRate": 1
+    },
+    {
+      "postalCode": "08734",
+      "city": "Lanoka Harbor",
+      "searches": 24,
+      "matched": 24,
+      "booked": 24,
+      "fillRate": 1
+    },
+    {
+      "postalCode": "08087",
+      "city": "Tuckerton",
+      "searches": 19,
+      "matched": 19,
+      "booked": 19,
+      "fillRate": 1
+    },
+    {
+      "postalCode": "08008",
+      "city": "Beach Haven",
+      "searches": 23,
+      "matched": 23,
+      "booked": 23,
+      "fillRate": 1
+    },
+    {
+      "postalCode": "08753",
+      "city": "Toms River",
+      "searches": 11,
+      "matched": 11,
+      "booked": 11,
+      "fillRate": 1
+    },
+    {
+      "postalCode": "08721",
+      "city": "Bayville",
+      "searches": 5,
+      "matched": 5,
+      "booked": 5,
+      "fillRate": 1
+    }
+  ],
+  "acceptance": {
+    "booked": 223,
+    "accepted": 222,
+    "acceptedRate": 0.9955156950672646,
+    "medianHours": 0,
+    "p90Hours": 3,
+    "within4Hours": 0.963963963963964
+  },
+  "utilization": {
+    "median": 0.02564102564102564,
+    "max": 0.23015873015873015,
+    "gini": 0.6679054054054054,
+    "topFifthShareOfJobs": 0.6790540540540541,
+    "providersWithNoJobs": 15
+  },
+  "travel": {
+    "medianMilesPerJob": 1.2470522993906359,
+    "p90MilesPerJob": 5.084530819230117,
+    "medianRouteMilesPerJob": 2.4163461036826295,
+    "medianJobsPerActiveDay": 1
+  },
+  "recovery": {
+    "declined": 15,
+    "replacementOffered": 15,
+    "recovered": 15,
+    "rate": 1
+  }
+}
