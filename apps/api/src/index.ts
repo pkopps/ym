@@ -10,6 +10,9 @@ import { AuthController } from "./controllers/AuthController";
 import { DocsController } from "./controllers/DocsController";
 import { MarketplaceController } from "./controllers/MarketplaceController";
 import { HealthController } from "./controllers/HealthController";
+import { CriticalPathController } from "./controllers/CriticalPathController";
+import { CriticalPathMonitor } from "./observability/CriticalPathMonitor";
+import { signSessionToken, verifyPassword, verifySessionToken } from "./auth";
 import { MediaController } from "./controllers/MediaController";
 import { ObservabilityController } from "./controllers/ObservabilityController";
 import { SupportController } from "./controllers/SupportController";
@@ -66,6 +69,30 @@ const notificationMaintenance = setInterval(() => {
 notificationMaintenance.unref();
 const READINESS_DATABASE_TIMEOUT_MS = 3_000;
 let shuttingDown = false;
+async function checkDatabase(): Promise<void> {
+  if (prismaClient) {
+    const client = prismaClient;
+    // A hung database connection must fail the health check instead of hanging it.
+    await withAbortableTimeout(async () => client.$queryRaw`SELECT 1`, {
+      timeoutMs: READINESS_DATABASE_TIMEOUT_MS,
+      timeoutMessage: "Database readiness check timed out"
+    });
+  }
+}
+const criticalPathMonitor = new CriticalPathMonitor({
+  checkDatabase,
+  // Marked internal so monitor searches never count toward product analytics funnels.
+  searchProviders: (payload) => analyticsRequestContext.run({ role: "ops", internal: true },
+    () => platform.searchProviders(payload, { trustedAddress: true })),
+  findAuthIdentityByEmail: (email) => platform.findAuthIdentityByEmail(email),
+  getUserByIdentity: (identity) => platform.getUserByIdentity(identity),
+  isAuthIdentityTemporarilyLocked: (identity) => platform.isAuthIdentityTemporarilyLocked(identity),
+  verifyPassword,
+  signSessionToken,
+  verifySessionToken,
+  reportFailure: (check, error) => reportBackgroundFailure(`critical-path:${check}`, error)
+});
+
 // Finder-fee billing claims each charge under a per-provider lock, so every replica can run this.
 let finderFeeWork: Promise<unknown> | undefined;
 const finderFeeMaintenance = setInterval(() => {
@@ -80,15 +107,9 @@ const controllers: ApiController[] = [
       // A probe that lands on a still-open connection during drain must not report ready.
       throw new Error("API is shutting down");
     }
-    if (prismaClient) {
-      const client = prismaClient;
-      // A hung database connection must fail the health check instead of hanging it.
-      await withAbortableTimeout(async () => client.$queryRaw`SELECT 1`, {
-        timeoutMs: READINESS_DATABASE_TIMEOUT_MS,
-        timeoutMessage: "Database readiness check timed out"
-      });
-    }
+    await checkDatabase();
   }),
+  new CriticalPathController(criticalPathMonitor),
   new DocsController(),
   new ReadinessController(platform, analytics, prismaClient),
   new PrivacyController(platform, prismaClient),
