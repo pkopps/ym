@@ -115,7 +115,7 @@ try {
           // Double-tap submit: the same request twice at once with one request id.
           stats.races += 1;
           const requestId = `${owner.id}-${attempt}`;
-          const results = await Promise.allSettled([book(owner, draft, { requestId, action: "double-tap" }), book(owner, draft, { requestId, action: "double-tap" })]);
+          const results = await Promise.allSettled([book(owner, draft, { requestId, action: "double-tap", expect: [409] }), book(owner, draft, { requestId, action: "double-tap", expect: [409] })]);
           const ids = results.flatMap(item => item.status === "fulfilled" ? [item.value.id] : []);
           recorder.event({ botId: owner.client.botId, action: "race-double-tap", bookingId: ids[0], detail: { ids } });
           for (const id of new Set(ids)) recorder.event({ botId: owner.client.botId, action: "book", bookingId: id, detail: { via: "double-tap" } });
@@ -136,7 +136,8 @@ try {
           stats.booked += ids.length;
           continue;
         }
-        const created = await book(owner, draft, { recurring });
+        // Another owner may already hold this time; the API refuses with 409, and that is the rule working.
+        const created = await book(owner, draft, { recurring, expect: [409] });
         const bookingId = bookingIdFromCreate(created) ?? created.id;
         recorder.event({ botId: owner.client.botId, action: recurring ? "book-recurring" : "book", bookingId, planId: recurring ? created.plan?.id ?? created.id : undefined, detail: { providerId: draft.providerId, startIso: draft.startIso, recurring } });
         stats.booked += 1;
