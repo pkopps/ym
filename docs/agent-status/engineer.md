@@ -169,6 +169,34 @@
 - Screenshot paths: `reports/agent-checkpoints/engineer/latest/launch-scope-copy/{provider,provider-pricing,provider-signup,provider-login,home}-{desktop,mobile}.png` (1440x900 and 390x844, flags off).
 - Recommended next task: chunk B, then replace the hardcoded fee amounts in copy with values from the new policy.
 
+## Current checkpoint: user-facing error messages and critical-path alerting
+
+- Updated: November 7, 2026 (America/New_York).
+- Branch: `claude/user-error-messaging-and-alerting`, stacked on `claude/api-durability-observability` (PR #19).
+- Completed: the shared API client now gives every screen plain-language English/Spanish messages for timeouts (with a warning on saves), offline/network failures, outages and gateway pages, 500s (with a reference), 429s and expired sessions, plus `kind`/`retryable` on errors. Raw "Failed to fetch", "Request failed for /api/… with status 502" and internal 5xx wording are no longer shown. The web app gained route error, global error and not-found pages, and the provider app gained a crash screen with retry. The API gained `GET /api/observability/critical-paths`, which checks the database, provider matching and password sign-in with no side effects. Setup is documented in `docs/ALERTING_AND_ON_CALL.md`.
+- In progress: none.
+- Remaining (Patrick): create the monitor accounts and set `CRITICAL_PATH_*`, create the uptime monitors, PagerDuty service and Sentry alert rules, and send one test page.
+- Blockers: no `node_modules` in the cloud session, so CI is the source of truth for typecheck, lint and full tests.
+- Changed workflows: no copy changes on happy paths. Error copy changes across web and provider app.
+- Validation: `critical-path-monitor.test.ts` (7) and `client-error-messages.test.ts` (7) passed with Node 22 `--experimental-transform-types`. Locale key parity checked (en/es). Typecheck, lint, the full API suite, Expo export and web smoke are pending CI.
+- Known defects/limits: `global-error.tsx` uses inline EN/ES copy because translations aren't available when the root layout fails.
+- Screenshot paths: none captured in this session (no browser available). The new error and not-found pages still need a 1440×900 and 390×844 screenshot pass.
+- Recommended next task: merge #19, then this PR, then finish the alerting checklist.
+
+## Current checkpoint: API durability and observability gaps
+
+- Updated: November 7, 2026 (America/New_York).
+- Branch: `claude/api-durability-observability`, based on `c490ff2`.
+- Completed: background-job failures (notification delivery, analytics maintenance) now log with detail, raise a runtime alert and reach Sentry with throttling; a controller that fails after starting its response no longer crashes the process; route metrics and Sentry route tags are bounded and ID-normalized; `/readyz` has a 3 s database timeout and fails while draining; shutdown steps are individually guarded and the process always exits within 25 s; inbound `X-Request-Id` is reused when well-formed. Documented in `docs/ANALYTICS_AND_OPERATIONS.md`.
+- In progress: none.
+- Remaining: run `npm run typecheck` and `npm run test:api` in CI or locally (this cloud session had no package network access, so dependencies could not be installed). Decide the production Postgres plan and backups.
+- Blockers: no `node_modules` in the cloud session.
+- Changed workflows: none user-facing. Ops runtime snapshot gains a "Background job failures detected" alert and `JOB` rows in recent failures.
+- Validation: new `apps/api/test/runtime-durability.test.ts` (5 tests) passed with Node 22 `--experimental-transform-types` against the changed modules. Full API suite and typecheck not run here.
+- Known defects/limits: staging Postgres is on Render's free plan (no backups).
+- Screenshot paths: none (no UI change).
+- Recommended next task: confirm CI green, then pick a production database plan and run the restore rehearsal against staging.
+
 ## Current checkpoint: provider and crew activation with booking continuity
 
 - Updated: October 5, 2026 (UTC).

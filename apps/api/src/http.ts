@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { IncomingMessage, ServerResponse } from "node:http";
 
 const DEFAULT_MAX_REQUEST_BODY_BYTES = 2_500_000;
@@ -186,6 +187,31 @@ export async function parseRequest(
       ])
     )
   };
+}
+
+const INBOUND_REQUEST_ID = /^[A-Za-z0-9._:-]{8,128}$/;
+
+/** Reuse a well-formed upstream request ID (web server, proxy) so one ID spans the whole hop. */
+export function resolveRequestId(headers: IncomingMessage["headers"]): string {
+  const supplied = headers["x-request-id"];
+  const candidate = Array.isArray(supplied) ? supplied[0] : supplied;
+  return candidate && INBOUND_REQUEST_ID.test(candidate) ? candidate : randomUUID();
+}
+
+/**
+ * Send an error body only if the controller has not already started the response.
+ * Writing headers twice throws, and in the top-level handler that throw would become an
+ * unhandled rejection that takes the whole API process down.
+ */
+export function sendErrorJson(response: ServerResponse, statusCode: number, payload: unknown): boolean {
+  if (response.headersSent || response.writableEnded) {
+    if (!response.writableEnded) {
+      response.destroy();
+    }
+    return false;
+  }
+  sendJson(response, statusCode, payload);
+  return true;
 }
 
 export function sendJson(response: ServerResponse, statusCode: number, payload: unknown): void {

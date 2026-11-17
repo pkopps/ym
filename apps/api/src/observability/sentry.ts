@@ -1,3 +1,5 @@
+import { normalizeRouteLabel } from "./ApiRuntimeObservability";
+
 type SentryModule = typeof import("@sentry/node");
 
 let sentry: SentryModule | undefined;
@@ -62,15 +64,16 @@ export function captureApiException(
     return undefined;
   }
   let eventId: string | undefined;
+  const route = normalizeRouteLabel(context.route);
   sentry.withScope((scope) => {
     scope.setTag("request_id", context.requestId);
     scope.setTag("http.method", context.method);
-    scope.setTag("http.route", context.route);
+    scope.setTag("http.route", route);
     scope.setTag("error.category", context.category);
     scope.setContext("yardmatch_api_request", {
       requestId: context.requestId,
       method: context.method,
-      route: context.route,
+      route,
       statusCode: context.statusCode
     });
     eventId = sentry?.captureException(error);
@@ -95,4 +98,33 @@ export function captureApiProcessException(
 
 export async function flushApiErrorReporting(timeoutMs = 2_000): Promise<boolean> {
   return sentry ? sentry.flush(timeoutMs) : true;
+}
+
+const BACKGROUND_CAPTURE_INTERVAL_MS = 5 * 60 * 1000;
+const lastBackgroundCaptureAt = new Map<string, number>();
+
+/**
+ * Background workers tick every second, so a persistent failure (for example a database outage)
+ * is reported at most once per job and error type every five minutes instead of flooding Sentry.
+ */
+export function captureApiBackgroundException(
+  error: unknown,
+  job: string,
+  nowMs = Date.now()
+): string | undefined {
+  if (!sentry) {
+    return undefined;
+  }
+  const key = `${job}:${error instanceof Error ? error.name : "unknown"}`;
+  const lastCapturedAt = lastBackgroundCaptureAt.get(key);
+  if (lastCapturedAt !== undefined && nowMs - lastCapturedAt < BACKGROUND_CAPTURE_INTERVAL_MS) {
+    return undefined;
+  }
+  lastBackgroundCaptureAt.set(key, nowMs);
+  return sentry.captureException(error, {
+    tags: {
+      "error.category": "background-job",
+      "background.job": job
+    }
+  });
 }

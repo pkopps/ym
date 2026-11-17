@@ -5527,6 +5527,26 @@ body:has(.compact-header) .customer-request-spine__index { width: 1.5rem; height
   .journey-confirmation__actions { display: grid; }
 }
 
+.page-error-state {
+  min-height: 60vh;
+  display: grid;
+  place-items: center;
+  padding: var(--ym-space-6) var(--ym-space-4);
+}
+
+.page-error-state__card {
+  max-width: 34rem;
+  display: grid;
+  gap: var(--ym-space-4);
+}
+
+.page-error-state__card h1 {
+  margin: 0;
+}
+
+.page-error-state__card p {
+  margin: 0;
+
 .login-page {
   display: grid;
   gap: var(--ym-space-4);
@@ -5687,6 +5707,9 @@ body:has(.compact-header) .customer-request-spine__index { width: 1.5rem; height
   color: var(--ym-color-ink-soft);
   line-height: 1.6;
 }
+
+.page-error-state__reference {
+  font-size: 0.875rem;
 
 .provider-landing__benefits {
   display: grid;
