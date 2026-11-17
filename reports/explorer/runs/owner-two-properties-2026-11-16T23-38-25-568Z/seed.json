@@ -1,0 +1,7 @@
+{
+  "persona": "owner-two-properties",
+  "seed": 21,
+  "webBaseUrl": "http://localhost:3012",
+  "apiBaseUrl": "http://127.0.0.1:4012",
+  "ownerId": "0446ed9c-6d7c-4971-82e8-2b8a68103c98"
+}

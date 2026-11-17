@@ -1,0 +1,129 @@
+{
+  "providers": 5,
+  "crew": {
+    "jobsNeedingCrew": 144,
+    "fillRate": 0.8888888888888888,
+    "medianHoursToFill": 0
+  },
+  "owners": 150,
+  "requests": 300,
+  "searchFillRate": 0.74,
+  "bookedRate": 0.74,
+  "deadZones": [
+    "08092 West Creek",
+    "08753 Toms River"
+  ],
+  "unmatched": {
+    "noProviderForServiceInRange": 50,
+    "providersButNoOpenSlot": 28
+  },
+  "zips": [
+    {
+      "postalCode": "08092",
+      "city": "West Creek",
+      "searches": 16,
+      "matched": 7,
+      "booked": 7,
+      "fillRate": 0.4375
+    },
+    {
+      "postalCode": "08753",
+      "city": "Toms River",
+      "searches": 11,
+      "matched": 5,
+      "booked": 5,
+      "fillRate": 0.45454545454545453
+    },
+    {
+      "postalCode": "08008",
+      "city": "Beach Haven",
+      "searches": 11,
+      "matched": 7,
+      "booked": 7,
+      "fillRate": 0.6363636363636364
+    },
+    {
+      "postalCode": "08734",
+      "city": "Lanoka Harbor",
+      "searches": 26,
+      "matched": 18,
+      "booked": 18,
+      "fillRate": 0.6923076923076923
+    },
+    {
+      "postalCode": "08087",
+      "city": "Tuckerton",
+      "searches": 23,
+      "matched": 16,
+      "booked": 16,
+      "fillRate": 0.6956521739130435
+    },
+    {
+      "postalCode": "08721",
+      "city": "Bayville",
+      "searches": 4,
+      "matched": 3,
+      "booked": 3,
+      "fillRate": 0.75
+    },
+    {
+      "postalCode": "08005",
+      "city": "Barnegat",
+      "searches": 109,
+      "matched": 83,
+      "booked": 83,
+      "fillRate": 0.7614678899082569
+    },
+    {
+      "postalCode": "08758",
+      "city": "Waretown",
+      "searches": 30,
+      "matched": 23,
+      "booked": 23,
+      "fillRate": 0.7666666666666667
+    },
+    {
+      "postalCode": "08050",
+      "city": "Manahawkin",
+      "searches": 51,
+      "matched": 43,
+      "booked": 43,
+      "fillRate": 0.8431372549019608
+    },
+    {
+      "postalCode": "08731",
+      "city": "Forked River",
+      "searches": 19,
+      "matched": 17,
+      "booked": 17,
+      "fillRate": 0.8947368421052632
+    }
+  ],
+  "acceptance": {
+    "booked": 157,
+    "accepted": 144,
+    "acceptedRate": 0.9171974522292994,
+    "medianHours": 2,
+    "p90Hours": 6,
+    "within4Hours": 0.75
+  },
+  "utilization": {
+    "median": 0.30246913580246915,
+    "max": 0.4148148148148148,
+    "gini": 0.19704433497536947,
+    "topFifthShareOfJobs": 0.27586206896551724,
+    "providersWithNoJobs": 0
+  },
+  "travel": {
+    "medianMilesPerJob": 2.9513870648627556,
+    "p90MilesPerJob": 8.000465204506625,
+    "medianRouteMilesPerJob": 5.601780695024416,
+    "medianJobsPerActiveDay": 2
+  },
+  "recovery": {
+    "declined": 33,
+    "replacementOffered": 21,
+    "recovered": 21,
+    "rate": 0.6363636363636364
+  }
+}

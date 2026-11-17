@@ -39,3 +39,10 @@ CLAUDE.local.md
 /reports/bot-runs/*/*.jsonl
 /reports/bot-runs/*/api.log
 /reports/bot-runs/*/invariants.json
+/reports/network-sim/*/*/
+/reports/explorer/runs/*/*.log
+/reports/explorer/runs/*/*.jsonl
+/reports/explorer/runs/*/seed/
+/reports/explorer/runs/*/old-session.txt
+/apps/web/.next-explorer/
+/.next-explorer/

@@ -24,6 +24,8 @@ export interface EnvironmentOptions {
   connectionLimit?: number;
   /** The API's stdout and stderr go here, so a 500 in the run can be traced to its stack. */
   apiLogPath?: string;
+  /** Extra API environment, such as CORS_ALLOWED_ORIGINS for a local web app. Vendor keys stay blank. */
+  apiEnv?: Record<string, string>;
   log?: (line: string) => void;
 }
 
@@ -82,7 +84,8 @@ export async function startLocalEnvironment(options: EnvironmentOptions): Promis
     DATABASE_URL: apiUrl.toString(), PORT: String(port), API_BASE_URL: apiBaseUrl, APP_BASE_URL: "http://localhost:3000",
     YARDMATCH_ENV: "local", JWT_SECRET: "bots-local-only-jwt-secret-not-for-any-deployed-environment",
     // Local mode turns both launch features on; the bots test the launch configuration, where both are off.
-    YARDMATCH_PAYMENTS_ENABLED: "false", YARDMATCH_CREW_MARKETPLACE_ENABLED: "false"
+    YARDMATCH_PAYMENTS_ENABLED: "false", YARDMATCH_CREW_MARKETPLACE_ENABLED: "false",
+    ...Object.fromEntries(Object.entries(options.apiEnv ?? {}).filter(([key]) => !VENDOR_SECRET_KEYS.includes(key)))
   });
   log(`starting API on ${apiBaseUrl}`);
   const api: ChildProcess = spawn(process.execPath, ["--import", "tsx", "apps/api/src/index.ts"], { cwd: repoRoot, env: apiEnv, stdio: ["ignore", "pipe", "pipe"] });

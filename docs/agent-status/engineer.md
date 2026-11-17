@@ -14,6 +14,20 @@
 - Screenshot paths: `reports/agent-checkpoints/engineer/latest/bot-fixes/dashboard-after-date-fix-1440x900.png`, `…-390x844.png`.
 - Recommended next task: decide the product questions above, then fix cancellation terms and confirmations in the customer flows.
 
+## Current checkpoint: bot army parts 1 to 3 (harness, network simulation, explorer pass)
+
+- Updated: November 16, 2026 (UTC).
+- Branch and commit: three stacked PRs: #49 `claude/bots-1-harness`, #50 `claude/bots-2-network`, and `claude/bots-3-explorer`; see the PRs for the commits.
+- Completed: `npm run bots` (owner, provider, crew and ops bots over HTTP, seeded and replayable, races, probes, billing fast-forward with a fake card gateway, invariant checker `npm run bots:check`). `npm run bots:simulate` (synthetic Barnegat market, side-by-side report at 5, 15 and 40 providers). `npm run explorer` and `npm run explorer:tools` (local API and web per persona, goal-only briefs, screenshots at 1440x900 and 390x844, reset-code expiry and old-session check), the `yardmatch-explorer` agent definition, and one full pass over all six personas with a ranked summary in `reports/explorer/summary-2026-11-16.md`. The testing plan is in `docs/plans/testing-and-matching-plan.md`. The loopback and test-database guard is shared with the scale smoke (`scripts/lib/local-database-guard.mts`).
+- In progress: none.
+- Remaining: triage the findings into issues and fix (build order step 4); nightly scripted run against staging; Playwright and Maestro journeys.
+- Blockers: none.
+- Changed workflows: none for users; these PRs add scripts, docs and reports only.
+- Validation: `npm run typecheck`; `npm run lint` with `--ignore-pattern '.claude/**'` (other local worktrees otherwise break eslint parsing); `npm run test:api` (428 passed, 34 skipped); `npm run test:api:postgres` (34 passed). Bot run seed 7 (12 providers, 30 crew, 120 owners), simulation seed 3 (150 owners at 5, 15 and 40 providers), six explorer runs. Node 22 (the default Homebrew Node 25 does not start here).
+- Known defects found, not fixed: invariant failures in the seed 7 run were provider overlaps (112, all from visits completed before their scheduled start), crew overfill (31 jobs), crew overlaps (27, all from early completion), live point visible after completion (325), and two missing cancel notifications from the accept/cancel race. Also two-owner and double-tap races both succeeding, deadlock 500s, and the explorer findings ranked in the summary (dashboard bookings ignore the chosen date and hold the whole opening; routes start the night before with no undo; no cancellation terms or confirmations; internal ops text shown to providers and customers).
+- Screenshot paths: `reports/explorer/runs/*/` (each run folder) and the browser-pane observations in each persona report.
+- Recommended next task: fix the dashboard date bug and the accept/cancel race first, then crew overfill, then booking-time guards on route, start and complete.
+
 ## Current checkpoint: remaining whole-table loads and the 200,000-booking run
 
 - Updated: November 14, 2026 (UTC).
