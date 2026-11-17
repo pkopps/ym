@@ -1,5 +1,19 @@
 # Engineer Status
 
+## Current checkpoint: fixes for the bot army's top findings
+
+- Updated: November 17, 2026 (UTC).
+- Branch and commit: `claude/bots-fix-1-races` (from main); see the PR for the commit. The bot army itself is in PRs #49 to #51.
+- Completed: a provider can't hold two visits at once (creating and confirming a booking now check the provider's other active bookings; search already assumed this). Confirm takes the booking lock that cancel takes. A single-service booking honors its request id, so a double tap returns the first booking. Accepting crew beyond what the job needs is refused. Route start, work start and completion open 3 hours before the visit (`MarketplacePlatformService.visitActionsOpenHoursBeforeStart`); completion errors are 4xx instead of 500. Completion clears the stored live GPS point. Crew status writes only when it changes and crew updates run in crew-id order (the deadlocks). The reset request says to wait during the one-minute cooldown, and a used code says so. The customer dashboard searches the chosen day and window instead of the earliest opening, and no longer stores an internal note on each booking.
+- In progress: none.
+- Remaining: findings that need a product decision (one visit per arrival window, cancellation terms at booking, finder-fee notice when confirming a new customer, new-provider checklist wording, crew arrival instructions, travel time between stops, work concentrating on top-ranked providers), plus the bot harness update to work visits inside the new 3-hour window.
+- Blockers: none.
+- Changed workflows: providers and crew can't start a route, start work or complete a visit until 3 hours before it. A second request for a provider's time that's already requested or confirmed is refused with "That time is no longer open with this provider."
+- Validation: `npm run typecheck`; `npm run lint` with `--ignore-pattern '.claude/**'`; `npm run test:api` (438 passed, 35 skipped); `npm run test:api:postgres` (35 passed); `npm run test:scale` (zero errors); `npm run test:web:smoke` (61 passed); bot army seed 7 (all invariants held, no 500s); browser check of the dashboard date fix. Node 22.
+- Known defects: none found in these changes.
+- Screenshot paths: `reports/agent-checkpoints/engineer/latest/bot-fixes/dashboard-after-date-fix-1440x900.png`, `…-390x844.png`.
+- Recommended next task: decide the product questions above, then fix cancellation terms and confirmations in the customer flows.
+
 ## Current checkpoint: bot army parts 1 to 3 (harness, network simulation, explorer pass)
 
 - Updated: November 16, 2026 (UTC).

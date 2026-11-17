@@ -52,6 +52,16 @@ import {
   getMinimumCustomerCustomDateString,
   getCustomerTimingLabel
 } from "./PublicMarketplaceSearchShell";
+import { availabilityRange, serviceDay } from "../lib/bookingJourney";
+
+/** The search window for a timing choice: that day's arrival window, or the whole day for a date range. */
+export function searchWindowForTiming(timing: CustomerTimingPreference, customDate: string | undefined, customWindow: CustomerCustomTimingWindow) {
+  const day = serviceDay(buildDateIsoForCustomerTiming(timing, customDate, customWindow));
+  const window = timing === "custom-range" ? "any"
+    : timing === "custom-date" ? customWindow
+      : timing.endsWith("morning") ? "morning" : timing.endsWith("afternoon") ? "afternoon" : "evening";
+  return availabilityRange(day, window);
+}
 
 const serviceOptions: Array<{ labelKey: TranslationKey; value: ServiceCategory }> = [
   { labelKey: "service.category.lawn_mowing", value: "lawn-mowing" },
@@ -840,6 +850,12 @@ export function CustomerLiveDashboard() {
         address: activeProperty.address,
         categories: [selectedCategory],
         dateIso: buildDateIsoForCustomerTiming(timingPreference, selectedCustomDate, selectedCustomWindow),
+        // Only openings on the chosen day and window; without this, search offers each provider's earliest opening.
+        // A request handed over from the listings page keeps the provider's opening picked there until the customer
+        // changes the timing here.
+        availability: requestedProviderId && timingPreference === requestedTiming
+          ? undefined
+          : searchWindowForTiming(timingPreference, selectedCustomDate, selectedCustomWindow),
         estimatedDurationMinutes: durationMinutes,
         requestSource: activeRetentionOpportunity ? "customer-retention-nudge" : "customer-web-dashboard",
         retentionPreference: getActiveRetentionPreference(),
@@ -1050,7 +1066,7 @@ export function CustomerLiveDashboard() {
           category: selectedCategory,
           scheduledStartIso: slot.startIso,
           scheduledEndIso: slot.endIso,
-          notes: "Requested from the live YardMatch customer dashboard.",
+          notes: "",
           totalCents: providerQuote.estimatedPriceCents,
           quoteToken: providerQuote.quoteToken,
           recommendationSessionId: providerResults?.recommendationSessionId,
@@ -1077,7 +1093,7 @@ export function CustomerLiveDashboard() {
           category: selectedCategory,
           scheduledStartIso: slot.startIso,
           scheduledEndIso: slot.endIso,
-          notes: "Recurring service plan started from the live YardMatch customer dashboard.",
+          notes: "",
           totalCents: providerQuote.estimatedPriceCents,
           quoteToken: providerQuote.quoteToken,
           frequency: selectedCadence,
