@@ -24,6 +24,11 @@ export interface BotSettings {
   radiusMiles: [number, number];
   /** Days of availability each provider publishes. */
   horizonDays: number;
+  /**
+   * Moves a visit into the window when its route, work start and completion are allowed (from 3 hours before the
+   * visit). The run compresses a season into minutes, so it does this in the local test database before working one.
+   */
+  bringVisitIntoWindow?: (bookingId: string) => Promise<void>;
 }
 
 export interface ProviderBot {
@@ -205,6 +210,7 @@ export async function workBooking(settings: BotSettings, provider: ProviderBot, 
   const { client, rng } = provider, timing = settings.timing, id = booking.id as string;
   const record = (action: string, detail?: Record<string, unknown>) => settings.recorder.event({ botId: client.botId, action, bookingId: id, detail });
 
+  await settings.bringVisitIntoWindow?.(id);
   // Before the route starts, nobody should see a live point.
   if (owner) await probeTracking(settings, owner.client, id, "owner before route", "no-live-point");
   await client.post("/api/bookings/on-route", { bookingId: id }, { action: "start route" });

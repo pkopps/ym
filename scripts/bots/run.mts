@@ -57,9 +57,19 @@ recorder.writeJson("config.json", { ...counts, seed, bookingsPerOwner, concurren
 
 const env = await startLocalEnvironment({ fresh: !args["keep-db"], connectionLimit: 10, log, apiLogPath: join(recorder.dir, "api.log") });
 const prisma = new PrismaClient({ datasourceUrl: env.databaseUrl.toString() });
+// Each worked visit gets its own one-minute slot in the recent past, two minutes apart across every provider, so moving
+// it never puts two visits on one provider or crew member at once. Booked visits start at least a day out, so the
+// recent past is free. Local test database only (guarded above).
+let workedVisits = 0;
+const runStartedAt = Date.now();
 const settings: BotSettings = {
   baseUrl: env.apiBaseUrl, runId: `bot${seed}`, recorder, zones: BARNEGAT_MARKET, radiusMiles: [8, 20], horizonDays: 14,
-  timing: { minDelayMs: Number(args["min-delay"]), maxDelayMs: Number(args["max-delay"]) }
+  timing: { minDelayMs: Number(args["min-delay"]), maxDelayMs: Number(args["max-delay"]) },
+  bringVisitIntoWindow: async bookingId => {
+    workedVisits += 1;
+    const start = new Date(runStartedAt - workedVisits * 2 * 60_000);
+    await prisma.booking.update({ where: { id: bookingId }, data: { scheduledStartIso: start, scheduledEndIso: new Date(start.getTime() + 60_000) } });
+  }
 };
 const started = Date.now();
 let exitCode = 0;
