@@ -32,6 +32,8 @@
     "bots": "node --import tsx scripts/bots/run.mts",
     "bots:check": "node --import tsx scripts/bots/check-invariants.mts",
     "bots:simulate": "node --import tsx scripts/bots/simulate.mts",
+    "explorer": "node --import tsx scripts/explorer/run.mts",
+    "explorer:tools": "node --import tsx scripts/explorer/tools.mts",
     "test:api:postgres": "npm --workspace @yardmatch/api run test:postgres",
     "test:api:smoke": "node scripts/api-smoke.mjs",
     "test:web:smoke": "playwright test --config=playwright.config.ts",
