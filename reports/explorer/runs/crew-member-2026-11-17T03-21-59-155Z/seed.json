@@ -1,0 +1,7 @@
+{
+  "persona": "crew-member",
+  "seed": 21,
+  "webBaseUrl": "http://localhost:3012",
+  "apiBaseUrl": "http://127.0.0.1:4012",
+  "crewMemberId": "45fcc27b-eda6-4219-badf-322c1c1d423b"
+}
