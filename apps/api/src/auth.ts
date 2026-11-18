@@ -1,6 +1,6 @@
 import { createHash, createHmac, randomBytes, randomInt, scrypt, timingSafeEqual } from "node:crypto";
 import { BoundedExecutor } from "./concurrency";
-import type { RequestContext } from "./http";
+import { HttpError, type RequestContext } from "./http";
 import { resolveJwtSecret } from "./config/productionConfig";
 
 export const TOKEN_TTL_SECONDS = 60 * 60 * 24 * 7;
@@ -81,11 +81,11 @@ export async function verifyPassword(password: string, storedHash: string): Prom
 export function validatePasswordStrength(password: string): void {
   const trimmed = password.trim();
   if (trimmed.length < 8) {
-    throw new Error("Password must be at least 8 characters long");
+    throw new HttpError(400, "Password must be at least 8 characters long");
   }
 
   if (!/[A-Z]/.test(trimmed) || !/[a-z]/.test(trimmed) || !/[0-9]/.test(trimmed)) {
-    throw new Error("Password must include uppercase, lowercase, and numeric characters");
+    throw new HttpError(400, "Password must include uppercase, lowercase, and numeric characters");
   }
 }
 

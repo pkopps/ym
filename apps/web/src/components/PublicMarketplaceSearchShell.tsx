@@ -285,6 +285,9 @@ export function PublicMarketplaceSearchShell({
   const [submitGuidance, setSubmitGuidance] = useState<string | undefined>();
   const [isSearching, setIsSearching] = useState(false);
   const [locationPromptOpen, setLocationPromptOpen] = useState(false);
+  // A pre-filled launch area is a placeholder, not the customer's answer; only what they type skips the prompt.
+  const [areaTyped, setAreaTyped] = useState(false);
+  const needsLocation = !selectedSuggestion && (!areaTyped || areaQuery.trim().length < 2);
   useEffect(() => { if (locationPromptRequest > 0) setLocationPromptOpen(true); }, [locationPromptRequest]);
   const [isResolvingLocation, setIsResolvingLocation] = useState(false);
   const [hasFinishedSearch, setHasFinishedSearch] = useState(false);
@@ -434,15 +437,32 @@ export function PublicMarketplaceSearchShell({
     return () => document.removeEventListener("mousedown", handlePointerDown);
   }, []);
 
-  function handleSubmit(serviceOverride?: ServiceCategory) {
-    const suggestion = selectedSuggestion ?? suggestions.find((item) => isPlaceSuggestionSafeToAutoSelect(item));
+  async function handleSubmit(serviceOverride?: ServiceCategory) {
     const service = serviceOverride ?? selectedService;
-    if (promptForLocation && !selectedSuggestion) {
+    const typedArea = areaQuery.trim();
+    // Ask for location unless the customer typed a town, ZIP or address; that is searched as is.
+    if (promptForLocation && needsLocation) {
       setLocationPromptOpen(true);
       return;
     }
 
-    if (!selectedSuggestion && suggestions.length > 0 && !suggestion) {
+    let candidates = suggestions;
+    if (!selectedSuggestion && typedArea.length >= 2 && (isSearching || !hasFinishedSearch || candidates.length === 0)) {
+      try {
+        candidates = (await api.searchPlaces(typedArea)).suggestions;
+        setSuggestions(candidates);
+      } catch {
+        candidates = [];
+      }
+    }
+    const suggestion = selectedSuggestion ?? candidates.find((item) => isPlaceSuggestionSafeToAutoSelect(item));
+
+    if (!suggestion && promptForLocation && candidates.length === 0) {
+      setSubmitGuidance(i18n.t("api.places.no_resolution"));
+      return;
+    }
+
+    if (!selectedSuggestion && candidates.length > 0 && !suggestion) {
       setSubmitGuidance(
         i18n.t("customer.search.choose_area_guidance")
       );
@@ -479,7 +499,7 @@ export function PublicMarketplaceSearchShell({
           <select
             onChange={(event) => {
               onSelectedServiceChange(event.target.value as ServiceCategory);
-              if (promptForLocation) setLocationPromptOpen(true);
+              if (promptForLocation && needsLocation) setLocationPromptOpen(true);
             }}
             value={selectedService}
           >
@@ -526,6 +546,7 @@ export function PublicMarketplaceSearchShell({
           <input
             id={areaInputId}
             onChange={(event) => {
+              setAreaTyped(true);
               onAreaQueryChange(event.target.value);
               onSelectedSuggestionChange(undefined);
               setSubmitGuidance(undefined);
@@ -536,7 +557,7 @@ export function PublicMarketplaceSearchShell({
             onKeyDown={(event) => {
               if (event.key === "Enter") {
                 event.preventDefault();
-                handleSubmit();
+                void handleSubmit();
               } else if (event.key === "Escape") {
                 setIsSuggestionMenuOpen(false);
               }
@@ -587,7 +608,7 @@ export function PublicMarketplaceSearchShell({
             </div>
           ) : null}
         </div>
-        <button className="button customer-search-shell__action" onClick={() => handleSubmit()} type="button">
+        <button className="button customer-search-shell__action" onClick={() => void handleSubmit()} type="button">
           {isSearching ? i18n.t("common.loading.checking_area") : i18n.t("common.actions.find_my_match")}
         </button>
       </div>

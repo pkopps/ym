@@ -52,6 +52,9 @@ test("crew selects a fit, creates preferences, receives work, routes, and sees c
   const assignment = page.locator("article.crew-opportunity-card").filter({ hasText: provider.companyName });
   await expect(assignment).toBeVisible();
   await expect(assignment.getByText("accepted", { exact: true })).toBeVisible();
+  // The visit is 2 hours out, so it is today, or tomorrow when the test runs late in the evening.
+  await expect(assignment.getByText(/^(Today|Tomorrow)$/)).toBeVisible();
+  await expect(page.locator("nav.workspace-nav").getByRole("link", { name: "Schedule" })).toBeVisible();
   await expect(assignment.getByRole("link", { name: "Get help" })).toBeVisible();
   await page.locator('a[href="#crew-preferences"]').click();
   await page.getByRole("button", { name: "+5 miles" }).first().click();
@@ -63,6 +66,9 @@ test("crew selects a fit, creates preferences, receives work, routes, and sees c
   await expect(page.getByText("1").first()).toBeVisible();
   await expect(page.getByRole("heading", { name: provider.companyName }).first()).toBeVisible();
   await expect(page.getByRole("link", { name: "Google Maps" }).first()).toBeVisible();
+  // Map links carry the whole address, not just the street.
+  await expect(page.getByRole("link", { name: "Google Maps" }).first()).toHaveAttribute("href", /Barnegat%2C%20NJ%2008005/);
+  await expect(page.getByRole("link", { name: "Apple Maps" }).first()).toHaveAttribute("href", /Barnegat%2C%20NJ%2008005/);
 
   await authenticatedPost(request, provider.token, "/api/bookings/confirm", { bookingId: booking.id });
   await authenticatedPost(request, provider.token, "/api/bookings/on-route", { bookingId: booking.id });

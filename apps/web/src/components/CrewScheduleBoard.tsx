@@ -30,12 +30,19 @@ function formatTimeRange(i18n: I18nInstance, startIso: string, endIso: string) {
   return `${start} - ${end}`;
 }
 
-function buildGoogleMapsDirectionsUrl(addressLine: string) {
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addressLine)}`;
+type MapAddress = { line1: string; line2?: string; city: string; state: string; postalCode: string };
+
+/** The full address, so maps finds the right town instead of guessing from the street alone. */
+export function mapQueryForAddress(address: MapAddress) {
+  return [address.line1, address.line2, address.city, `${address.state} ${address.postalCode}`.trim()].filter(Boolean).join(", ");
 }
 
-function buildAppleMapsDirectionsUrl(addressLine: string) {
-  return `https://maps.apple.com/?q=${encodeURIComponent(addressLine)}`;
+function buildGoogleMapsDirectionsUrl(address: MapAddress) {
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQueryForAddress(address))}`;
+}
+
+function buildAppleMapsDirectionsUrl(address: MapAddress) {
+  return `https://maps.apple.com/?q=${encodeURIComponent(mapQueryForAddress(address))}`;
 }
 
 export function CrewScheduleBoard() {
@@ -178,7 +185,7 @@ export function CrewScheduleBoard() {
                     <div className="cta-row">
                       <a
                         className="button-secondary crew-mobile-directions"
-                        href={buildGoogleMapsDirectionsUrl(match.serviceAddress.line1)}
+                        href={buildGoogleMapsDirectionsUrl(match.serviceAddress)}
                         rel="noreferrer"
                         target="_blank"
                       >
@@ -186,7 +193,7 @@ export function CrewScheduleBoard() {
                       </a>
                       <a
                         className="button-secondary crew-mobile-directions"
-                        href={buildAppleMapsDirectionsUrl(match.serviceAddress.line1)}
+                        href={buildAppleMapsDirectionsUrl(match.serviceAddress)}
                         rel="noreferrer"
                         target="_blank"
                       >
@@ -231,7 +238,7 @@ export function CrewScheduleBoard() {
                   <div className="cta-row">
                     <a
                       className="button-secondary crew-mobile-directions"
-                      href={buildGoogleMapsDirectionsUrl(match.serviceAddress.line1)}
+                      href={buildGoogleMapsDirectionsUrl(match.serviceAddress)}
                       rel="noreferrer"
                       target="_blank"
                     >
@@ -239,7 +246,7 @@ export function CrewScheduleBoard() {
                     </a>
                     <a
                       className="button-secondary crew-mobile-directions"
-                      href={buildAppleMapsDirectionsUrl(match.serviceAddress.line1)}
+                      href={buildAppleMapsDirectionsUrl(match.serviceAddress)}
                       rel="noreferrer"
                       target="_blank"
                     >

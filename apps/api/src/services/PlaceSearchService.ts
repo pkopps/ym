@@ -143,7 +143,7 @@ export class PlaceSearchService {
   private searchLocal(query: string): PlaceSuggestion[] {
     const normalizedQuery = this.normalizeQuery(query);
     const queryTokens = this.expandQueryTokens(normalizedQuery);
-    const postalQuery = normalizedQuery.replace(/\D/g, "");
+    const postalQuery = this.extractPostalQuery(normalizedQuery);
     const stateQuery = this.extractStateQuery(queryTokens);
 
     return localPlaceSeeds
@@ -182,6 +182,9 @@ export class PlaceSearchService {
         }
         if ((seed.aliases ?? []).some((alias) => this.normalizeQuery(alias) === normalizedQuery)) {
           score += 4;
+        }
+        if (this.queryNamesCity(normalizedQuery, city, stateQuery)) {
+          score += 5;
         }
 
         return {
@@ -407,7 +410,8 @@ export class PlaceSearchService {
       normalizedCity === normalizedQuery ||
       cityStateLabel === normalizedQuery ||
       normalizedAliases.includes(normalizedQuery) ||
-      (postalQuery.length >= 5 && seed.postalCode.startsWith(postalQuery))
+      (postalQuery.length >= 5 && seed.postalCode.startsWith(postalQuery)) ||
+      this.queryNamesCity(normalizedQuery, normalizedCity, this.extractStateQuery(this.expandQueryTokens(normalizedQuery)))
         ? "high"
         : normalizedLabel.startsWith(normalizedQuery) || normalizedCity.startsWith(normalizedQuery)
           ? "medium"
@@ -421,6 +425,8 @@ export class PlaceSearchService {
             ? "Matched the city directly"
             : cityStateLabel === normalizedQuery
               ? "Matched the city and state"
+              : this.queryNamesCity(normalizedQuery, normalizedCity, this.extractStateQuery(this.expandQueryTokens(normalizedQuery)))
+                ? "Matched the city"
               : normalizedLabel.startsWith(normalizedQuery) || normalizedCity.startsWith(normalizedQuery)
                 ? "Closest local service-area match"
                 : "Nearby local service-area guess";
@@ -470,6 +476,26 @@ export class PlaceSearchService {
     }
 
     return [...expanded];
+  }
+
+  /**
+   * The ZIP in a typed query: the 5 digits that end a full address ("12 Bay Ave, Barnegat, NJ 08005"), or a query of
+   * digits only (a partial ZIP) as typed. A house number is never read as a ZIP.
+   */
+  private extractPostalQuery(normalizedQuery: string): string {
+    const trailingZip = normalizedQuery.match(/(?:^|[\s,])(\d{5})(?:-\d{4})?$/);
+    if (trailingZip) return trailingZip[1];
+    return /^[\d\s-]+$/.test(normalizedQuery) ? normalizedQuery.replace(/\D/g, "") : "";
+  }
+
+  /** A typed address names the town as its own comma part: "12 Bay Ave, Barnegat, NJ" or "Barnegat NJ 08005". */
+  private queryNamesCity(normalizedQuery: string, normalizedCity: string, stateQuery?: string): boolean {
+    const parts = normalizedQuery.split(",").map((part) => part.trim().replace(/\s+\d{5}(-\d{4})?$/, "").trim());
+    return parts.some((part, index) =>
+      part === normalizedCity ||
+      (stateQuery !== undefined && part === `${normalizedCity} ${stateQuery}`) ||
+      (index === parts.length - 1 && index > 0 && part.startsWith(`${normalizedCity} `) && /^[a-z]{2}$/.test(part.slice(normalizedCity.length + 1)))
+    );
   }
 
   private extractStateQuery(tokens: string[]): string | undefined {
