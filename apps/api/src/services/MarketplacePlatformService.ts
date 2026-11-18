@@ -5973,6 +5973,10 @@ export class MarketplacePlatformService {
     ) {
       throw new HttpError(400, "Service issues are only available for active bookings");
     }
+    if (payload.exceptionType === "customer-no-show" && Date.now() < Date.parse(booking.scheduledStartIso)) {
+      const opens = new Date(booking.scheduledStartIso).toLocaleString("en-US", { timeZone: "America/New_York", weekday: "short", hour: "numeric", minute: "2-digit" });
+      throw new HttpError(409, `You can report a no-show once the arrival window starts, ${opens} ET.`);
+    }
     if (payload.notes?.trim()) {
       this.assertNoDirectContactDetails(payload.notes, "booking-exception", providerId, "provider");
     }

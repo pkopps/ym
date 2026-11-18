@@ -84,6 +84,19 @@ function formatDateTime(i18n: I18nInstance, iso: string) {
   });
 }
 
+const serviceDayKey = (date: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(date);
+
+/** "Today", "Tomorrow" or the weekday and date, in the service area's time zone. */
+export function crewVisitDayLabel(i18n: I18nInstance, iso: string, now = new Date()) {
+  const day = serviceDayKey(new Date(iso));
+  const today = serviceDayKey(now);
+  const [year, month, date] = today.split("-").map(Number);
+  const tomorrow = new Date(Date.UTC(year, month - 1, date + 1)).toISOString().slice(0, 10);
+  if (day === today) return i18n.t("crew_live.day.today");
+  if (day === tomorrow) return i18n.t("crew_live.day.tomorrow");
+  return i18n.formatDate(iso, { weekday: "long", month: "short", day: "numeric" });
+}
+
 function formatCategory(i18n: I18nInstance, category: ServiceCategory) {
   return i18n.t(serviceCategoryToI18nKey(category));
 }
@@ -761,7 +774,7 @@ export function CrewLiveDashboard() {
       ) : null}
 
       <h1>{i18n.t("workspace.jobs")}</h1>
-      <nav className="workspace-nav"><a href={i18n.locale === "es" ? "/es/crew/schedule" : "/crew/schedule"}>{i18n.t("workspace.today")}</a><a href="#crew-preferences">{i18n.t("workspace.settings")}</a></nav>
+      <nav className="workspace-nav"><a href={i18n.locale === "es" ? "/es/crew/schedule" : "/crew/schedule"}>{i18n.t("nav.user.schedule")}</a><a href="#crew-preferences">{i18n.t("workspace.settings")}</a></nav>
       <section className="stack-lg">
         {matches.map((match) => {
           return (
@@ -780,6 +793,7 @@ export function CrewLiveDashboard() {
               <div className="crew-opportunity-card__grid">
                 <div>
                   <h4>{i18n.t("crew_live.when")}</h4>
+                  <p><strong>{crewVisitDayLabel(i18n, match.scheduledStartIso)}</strong></p>
                   <p>{formatDateTime(i18n, match.scheduledStartIso)}</p>
                   <p>{formatDateTime(i18n, match.scheduledEndIso)}</p>
                 </div>

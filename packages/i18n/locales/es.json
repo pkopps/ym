@@ -3500,5 +3500,13 @@
   "customer_live.confirm_end_plan.title": "¿Terminar este plan?",
   "customer_live.confirm_end_plan.body": "Se cancelan las visitas con {provider} que no hayan empezado. No tiene costo.",
   "customer_live.confirm_end_plan.confirm": "Terminar plan",
-  "customer_live.confirm_end_plan.keep": "Mantener plan"
+  "customer_live.confirm_end_plan.keep": "Mantener plan",
+  "provider_live.confirm_late.title": "¿Avisar al cliente que llegas {minutes, number} minutos tarde?",
+  "provider_live.confirm_late.body": "{customer} recibe ahora un mensaje con la nueva hora de llegada: {time}.",
+  "provider_live.confirm_issue.title": "¿Reportar \"{issue}\"?",
+  "provider_live.confirm_issue.body": "{customer} recibe ahora un mensaje sobre esto.",
+  "provider_live.confirm.send": "Enviar al cliente",
+  "provider_live.confirm.cancel": "Ahora no",
+  "crew_live.day.today": "Hoy",
+  "crew_live.day.tomorrow": "Mañana"
 }

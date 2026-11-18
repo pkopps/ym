@@ -7,6 +7,7 @@ import { ProviderBillingPanel } from "./ProviderBillingPanel";
 import type { PropertyPhotoArea } from "@yardmatch/contracts";
 
 import { BookingSchedulePanel } from "./BookingSchedulePanel";
+import { ConfirmActionDialog } from "./ConfirmActionDialog";
 import { WorkspaceSection } from "./WorkspaceSection";
 
 import {
@@ -45,6 +46,19 @@ function formatDateTime(i18n: I18nInstance, iso: string) {
     timeStyle: "short"
   });
 }
+
+/** One-tap visit updates open with the other visit actions, 3 hours before the window. */
+const QUICK_UPDATES_OPEN_HOURS = 3;
+
+function quickUpdatesOpen(scheduledStartIso: string, now = Date.now()) {
+  return now >= Date.parse(scheduledStartIso) - QUICK_UPDATES_OPEN_HOURS * 3_600_000;
+}
+
+function windowHasStarted(scheduledStartIso: string, now = Date.now()) {
+  return now >= Date.parse(scheduledStartIso);
+}
+
+type PendingQuickUpdate = { title: string; body: string; run: () => Promise<void> };
 
 function buildLateEta(bookingIso: string, minutes: number) {
   return new Date(new Date(bookingIso).getTime() + minutes * 60_000).toISOString();
@@ -318,6 +332,7 @@ export function ProviderLiveManagementBoard() {
   const [statusMessage, setStatusMessage] = useState<string | undefined>();
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
   const [isWorking, setIsWorking] = useState(false);
+  const [pendingQuickUpdate, setPendingQuickUpdate] = useState<PendingQuickUpdate | undefined>();
   const [evidenceAreas, setEvidenceAreas] = useState<Record<string, PropertyPhotoArea>>({});
   const [profileCompanyName, setProfileCompanyName] = useState("");
   const [profileBio, setProfileBio] = useState("");
@@ -1017,6 +1032,18 @@ export function ProviderLiveManagementBoard() {
 
   return (
     <div className="stack-lg">
+      {pendingQuickUpdate ? (
+        <ConfirmActionDialog
+          title={pendingQuickUpdate.title}
+          confirmLabel={i18n.t("provider_live.confirm.send")}
+          cancelLabel={i18n.t("provider_live.confirm.cancel")}
+          busy={isWorking}
+          onClose={() => setPendingQuickUpdate(undefined)}
+          onConfirm={() => void pendingQuickUpdate.run().finally(() => setPendingQuickUpdate(undefined))}
+        >
+          <p>{pendingQuickUpdate.body}</p>
+        </ConfirmActionDialog>
+      ) : null}
       {statusMessage ? (
         <section className="card">
           <h2>{i18n.t("provider_live.updated")}</h2>
@@ -1450,7 +1477,7 @@ export function ProviderLiveManagementBoard() {
               </details>
             ) : null}
 
-            {job.status === "confirmed" && !job.onRouteConfirmedAt ? (
+            {job.status === "confirmed" && !job.onRouteConfirmedAt && quickUpdatesOpen(job.scheduledStartIso) ? (
               <details className="service-card-disclosure">
                 <summary className="service-card-disclosure__summary">{i18n.t("provider_live.action.report_issue")}</summary>
                 <div className="service-card-disclosure__body">
@@ -1458,13 +1485,14 @@ export function ProviderLiveManagementBoard() {
                     <button
                       className="button-secondary"
                       disabled={isWorking}
-                      onClick={() =>
-                        void handleMarkLate(
-                          job.bookingId,
-                          buildLateEta(job.scheduledStartIso, 15),
-                          i18n.t("provider_live.issue.late_15_reason")
-                        )
-                      }
+                      onClick={() => {
+                        const eta = buildLateEta(job.scheduledStartIso, 15);
+                        setPendingQuickUpdate({
+                          title: i18n.t("provider_live.confirm_late.title", { minutes: 15 }),
+                          body: i18n.t("provider_live.confirm_late.body", { customer: job.customerName, time: i18n.formatDate(eta, { weekday: "short", hour: "numeric", minute: "2-digit" }) }),
+                          run: () => handleMarkLate(job.bookingId, eta, i18n.t("provider_live.issue.late_15_reason"))
+                        });
+                      }}
                       type="button"
                     >
                       {i18n.t("provider_live.issue.late_15")}
@@ -1472,40 +1500,41 @@ export function ProviderLiveManagementBoard() {
                     <button
                       className="button-secondary"
                       disabled={isWorking}
-                      onClick={() =>
-                        void handleMarkLate(
-                          job.bookingId,
-                          buildLateEta(job.scheduledStartIso, 30),
-                          i18n.t("provider_live.issue.late_30_reason")
-                        )
-                      }
+                      onClick={() => {
+                        const eta = buildLateEta(job.scheduledStartIso, 30);
+                        setPendingQuickUpdate({
+                          title: i18n.t("provider_live.confirm_late.title", { minutes: 30 }),
+                          body: i18n.t("provider_live.confirm_late.body", { customer: job.customerName, time: i18n.formatDate(eta, { weekday: "short", hour: "numeric", minute: "2-digit" }) }),
+                          run: () => handleMarkLate(job.bookingId, eta, i18n.t("provider_live.issue.late_30_reason"))
+                        });
+                      }}
                       type="button"
                     >
                       {i18n.t("provider_live.issue.late_30")}
                     </button>
-                    <button
+                    {windowHasStarted(job.scheduledStartIso) ? <button
                       className="button-secondary"
                       disabled={isWorking}
                       onClick={() =>
-                        void handleReportIssue(
-                          job.bookingId,
-                          "customer-no-show",
-                          i18n.t("provider_live.issue.customer_no_show_reason")
-                        )
+                        setPendingQuickUpdate({
+                          title: i18n.t("provider_live.confirm_issue.title", { issue: i18n.t("booking.exception.customer_no_show") }),
+                          body: i18n.t("provider_live.confirm_issue.body", { customer: job.customerName }),
+                          run: () => handleReportIssue(job.bookingId, "customer-no-show", i18n.t("provider_live.issue.customer_no_show_reason"))
+                        })
                       }
                       type="button"
                     >
                       {i18n.t("booking.exception.customer_no_show")}
-                    </button>
+                    </button> : null}
                     <button
                       className="button-secondary"
                       disabled={isWorking}
                       onClick={() =>
-                        void handleReportIssue(
-                          job.bookingId,
-                          "customer-not-ready",
-                          i18n.t("provider_live.issue.customer_not_ready_reason")
-                        )
+                        setPendingQuickUpdate({
+                          title: i18n.t("provider_live.confirm_issue.title", { issue: i18n.t("booking.exception.customer_not_ready") }),
+                          body: i18n.t("provider_live.confirm_issue.body", { customer: job.customerName }),
+                          run: () => handleReportIssue(job.bookingId, "customer-not-ready", i18n.t("provider_live.issue.customer_not_ready_reason"))
+                        })
                       }
                       type="button"
                     >
@@ -1515,11 +1544,11 @@ export function ProviderLiveManagementBoard() {
                       className="button-secondary"
                       disabled={isWorking}
                       onClick={() =>
-                        void handleReportIssue(
-                          job.bookingId,
-                          "unable-to-access-property",
-                          i18n.t("provider_live.issue.no_access_reason")
-                        )
+                        setPendingQuickUpdate({
+                          title: i18n.t("provider_live.confirm_issue.title", { issue: i18n.t("booking.exception.unable_to_access_property") }),
+                          body: i18n.t("provider_live.confirm_issue.body", { customer: job.customerName }),
+                          run: () => handleReportIssue(job.bookingId, "unable-to-access-property", i18n.t("provider_live.issue.no_access_reason"))
+                        })
                       }
                       type="button"
                     >
@@ -1539,11 +1568,11 @@ export function ProviderLiveManagementBoard() {
                       className="button-secondary"
                       disabled={isWorking}
                       onClick={() =>
-                        void handleReportIssue(
-                          job.bookingId,
-                          "customer-no-show",
-                          i18n.t("provider_live.issue.customer_no_show_reason")
-                        )
+                        setPendingQuickUpdate({
+                          title: i18n.t("provider_live.confirm_issue.title", { issue: i18n.t("booking.exception.customer_no_show") }),
+                          body: i18n.t("provider_live.confirm_issue.body", { customer: job.customerName }),
+                          run: () => handleReportIssue(job.bookingId, "customer-no-show", i18n.t("provider_live.issue.customer_no_show_reason"))
+                        })
                       }
                       type="button"
                     >
@@ -1553,11 +1582,11 @@ export function ProviderLiveManagementBoard() {
                       className="button-secondary"
                       disabled={isWorking}
                       onClick={() =>
-                        void handleReportIssue(
-                          job.bookingId,
-                          "customer-not-ready",
-                          i18n.t("provider_live.issue.customer_not_ready_reason")
-                        )
+                        setPendingQuickUpdate({
+                          title: i18n.t("provider_live.confirm_issue.title", { issue: i18n.t("booking.exception.customer_not_ready") }),
+                          body: i18n.t("provider_live.confirm_issue.body", { customer: job.customerName }),
+                          run: () => handleReportIssue(job.bookingId, "customer-not-ready", i18n.t("provider_live.issue.customer_not_ready_reason"))
+                        })
                       }
                       type="button"
                     >
@@ -1567,11 +1596,11 @@ export function ProviderLiveManagementBoard() {
                       className="button-secondary"
                       disabled={isWorking}
                       onClick={() =>
-                        void handleReportIssue(
-                          job.bookingId,
-                          "unable-to-access-property",
-                          i18n.t("provider_live.issue.no_access_reason")
-                        )
+                        setPendingQuickUpdate({
+                          title: i18n.t("provider_live.confirm_issue.title", { issue: i18n.t("booking.exception.unable_to_access_property") }),
+                          body: i18n.t("provider_live.confirm_issue.body", { customer: job.customerName }),
+                          run: () => handleReportIssue(job.bookingId, "unable-to-access-property", i18n.t("provider_live.issue.no_access_reason"))
+                        })
                       }
                       type="button"
                     >
@@ -1581,11 +1610,11 @@ export function ProviderLiveManagementBoard() {
                       className="button-secondary"
                       disabled={isWorking}
                       onClick={() =>
-                        void handleReportIssue(
-                          job.bookingId,
-                          "service-could-not-be-completed",
-                          i18n.t("provider_live.issue.could_not_complete_reason")
-                        )
+                        setPendingQuickUpdate({
+                          title: i18n.t("provider_live.confirm_issue.title", { issue: i18n.t("booking.exception.service_could_not_be_completed") }),
+                          body: i18n.t("provider_live.confirm_issue.body", { customer: job.customerName }),
+                          run: () => handleReportIssue(job.bookingId, "service-could-not-be-completed", i18n.t("provider_live.issue.could_not_complete_reason"))
+                        })
                       }
                       type="button"
                     >

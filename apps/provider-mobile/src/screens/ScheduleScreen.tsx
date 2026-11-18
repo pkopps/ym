@@ -2,7 +2,7 @@ import { BookingScheduleCard } from "../components/BookingScheduleCard";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as Location from "expo-location";
 import * as ImagePicker from "expo-image-picker";
-import { Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
 import {
   BookingExceptionType,
@@ -789,6 +789,13 @@ export function ScheduleScreen() {
     }
   }
 
+  function confirmQuickUpdate(title: string, body: string, run: () => Promise<void>) {
+    Alert.alert(title, body, [
+      { text: i18n.t("provider_live.confirm.cancel"), style: "cancel" },
+      { text: i18n.t("provider_live.confirm.send"), onPress: () => void run() }
+    ]);
+  }
+
   async function markLate(bookingId: string, lateEtaIso: string, reason: string) {
     if (!envelope?.session.token) {
       return;
@@ -1462,7 +1469,8 @@ export function ScheduleScreen() {
                 (job.crewGap > 0 || job.requiresRouteLeaderAssignment || hasPendingCrewReview || canAssignRouteLeader);
               const canShowProofTools = shouldShowArrivalProof || shouldShowCompletionProof;
               const canShowIssueTools = job.status === "confirmed" || job.status === "in-progress";
-              const canShowDelayActions = job.status === "confirmed" && !job.onRouteConfirmedAt;
+              // One-tap delay notices open 3 hours before the window, with the other visit actions.
+              const canShowDelayActions = job.status === "confirmed" && !job.onRouteConfirmedAt && Date.now() >= Date.parse(job.scheduledStartIso) - 3 * 3_600_000;
               const canShowArrivalIssueActions = job.status === "confirmed" && Boolean(job.onRouteConfirmedAt);
               const canShowOnsiteIssueActions = canShowArrivalIssueActions || job.status === "in-progress";
               const canShowCustomerTools = Boolean(job.onRouteConfirmedAt);
@@ -1921,13 +1929,14 @@ export function ScheduleScreen() {
                         {canShowDelayActions ? (
                           <Pressable
                             disabled={isWorking}
-                            onPress={() =>
-                              void markLate(
-                                job.bookingId,
-                                buildLateEta(job.scheduledStartIso, 15),
-                                i18n.t("provider_mobile.schedule.issue.reason_15")
-                              )
-                            }
+                            onPress={() => {
+                              const eta = buildLateEta(job.scheduledStartIso, 15);
+                              confirmQuickUpdate(
+                                i18n.t("provider_live.confirm_late.title", { minutes: 15 }),
+                                i18n.t("provider_live.confirm_late.body", { customer: job.customerName, time: i18n.formatDate(eta, { weekday: "short", hour: "numeric", minute: "2-digit" }) }),
+                                () => markLate(job.bookingId, eta, i18n.t("provider_mobile.schedule.issue.reason_15"))
+                              );
+                            }}
                             style={styles.chatButton}
                           >
                             <Text style={styles.chatButtonLabel}>{i18n.t("provider_mobile.schedule.issue.plus_15")}</Text>
@@ -1936,13 +1945,14 @@ export function ScheduleScreen() {
                         {canShowDelayActions ? (
                           <Pressable
                             disabled={isWorking}
-                            onPress={() =>
-                              void markLate(
-                                job.bookingId,
-                                buildLateEta(job.scheduledStartIso, 30),
-                                i18n.t("provider_mobile.schedule.issue.reason_30")
-                              )
-                            }
+                            onPress={() => {
+                              const eta = buildLateEta(job.scheduledStartIso, 30);
+                              confirmQuickUpdate(
+                                i18n.t("provider_live.confirm_late.title", { minutes: 30 }),
+                                i18n.t("provider_live.confirm_late.body", { customer: job.customerName, time: i18n.formatDate(eta, { weekday: "short", hour: "numeric", minute: "2-digit" }) }),
+                                () => markLate(job.bookingId, eta, i18n.t("provider_mobile.schedule.issue.reason_30"))
+                              );
+                            }}
                             style={styles.chatButton}
                           >
                             <Text style={styles.chatButtonLabel}>{i18n.t("provider_mobile.schedule.issue.plus_30")}</Text>
@@ -1952,10 +1962,10 @@ export function ScheduleScreen() {
                           <Pressable
                             disabled={isWorking}
                             onPress={() =>
-                              void reportIssue(
-                                job.bookingId,
-                                "customer-no-show",
-                                i18n.t("provider_mobile.schedule.issue.reason_no_show")
+                              confirmQuickUpdate(
+                                i18n.t("provider_live.confirm_issue.title", { issue: i18n.t("booking.exception.customer_no_show") }),
+                                i18n.t("provider_live.confirm_issue.body", { customer: job.customerName }),
+                                () => reportIssue(job.bookingId, "customer-no-show", i18n.t("provider_mobile.schedule.issue.reason_no_show"))
                               )
                             }
                             style={styles.chatButton}
@@ -1967,10 +1977,10 @@ export function ScheduleScreen() {
                           <Pressable
                             disabled={isWorking}
                             onPress={() =>
-                              void reportIssue(
-                                job.bookingId,
-                                "customer-not-ready",
-                                i18n.t("provider_mobile.schedule.issue.reason_not_ready")
+                              confirmQuickUpdate(
+                                i18n.t("provider_live.confirm_issue.title", { issue: i18n.t("booking.exception.customer_not_ready") }),
+                                i18n.t("provider_live.confirm_issue.body", { customer: job.customerName }),
+                                () => reportIssue(job.bookingId, "customer-not-ready", i18n.t("provider_mobile.schedule.issue.reason_not_ready"))
                               )
                             }
                             style={styles.chatButton}
@@ -1982,10 +1992,10 @@ export function ScheduleScreen() {
                           <Pressable
                             disabled={isWorking}
                             onPress={() =>
-                              void reportIssue(
-                                job.bookingId,
-                                "unable-to-access-property",
-                                i18n.t("provider_mobile.schedule.issue.reason_no_access")
+                              confirmQuickUpdate(
+                                i18n.t("provider_live.confirm_issue.title", { issue: i18n.t("booking.exception.unable_to_access_property") }),
+                                i18n.t("provider_live.confirm_issue.body", { customer: job.customerName }),
+                                () => reportIssue(job.bookingId, "unable-to-access-property", i18n.t("provider_mobile.schedule.issue.reason_no_access"))
                               )
                             }
                             style={styles.chatButton}
@@ -1997,10 +2007,10 @@ export function ScheduleScreen() {
                           <Pressable
                             disabled={isWorking}
                             onPress={() =>
-                              void reportIssue(
-                                job.bookingId,
-                                "service-could-not-be-completed",
-                                i18n.t("provider_mobile.schedule.issue.reason_could_not_complete")
+                              confirmQuickUpdate(
+                                i18n.t("provider_live.confirm_issue.title", { issue: i18n.t("booking.exception.service_could_not_be_completed") }),
+                                i18n.t("provider_live.confirm_issue.body", { customer: job.customerName }),
+                                () => reportIssue(job.bookingId, "service-could-not-be-completed", i18n.t("provider_mobile.schedule.issue.reason_could_not_complete"))
                               )
                             }
                             style={styles.chatButton}

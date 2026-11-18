@@ -316,12 +316,15 @@ export function LoginCard({ audience }: { audience: "member" | "staff" }) {
             <span>{i18n.t("login_card.reset.new_password")}</span>
             <input
               autoComplete="new-password"
+              aria-describedby="reset-password-helper"
+              minLength={8}
               name="newPassword"
               onChange={(event) => setNewPassword(event.target.value)}
               required
               type="password"
               value={newPassword}
             />
+            <small id="reset-password-helper">{i18n.t("auth_signup.password_helper")}</small>
           </label>
 
           <div className="cta-row">

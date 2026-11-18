@@ -1,5 +1,24 @@
 # Engineer Status
 
+## Current checkpoint: explorer re-run top bugs (N1–N5)
+
+- Updated: November 17, 2026 (UTC).
+- Branch and commit: `claude/explorer-top-bugs`; see the PR for the commit.
+- Completed:
+  - N1: a weak new password (at reset or sign-up) is a 400 that states the rule, not a 500. The reset form now shows the password rule.
+  - N2: crew Google and Apple Maps links carry the full address (street, town, state and ZIP).
+  - N3: one-tap "Running late" and issue buttons (web and provider app) appear from 3 hours before the visit and ask before messaging the customer. A no-show can't be reported before the arrival window starts (API guard). The full timing update form is unchanged.
+  - N4: the home search sends a typed town, ZIP or "street, town" address straight to matches; the location prompt appears only when the field is empty. Local place search reads a trailing ZIP and a town named as its own comma part, and never reads a house number as a ZIP.
+  - N5: crew jobs show "Today", "Tomorrow" or the weekday in the service area's time zone, and the crew nav link says "Schedule".
+- In progress: none.
+- Remaining: other findings in `reports/explorer/summary-2026-11-17.md`. The typed street is still not carried into the booking form, and addresses without commas ("12 Bay Ave Barnegat NJ") still need a pick.
+- Blockers: none.
+- Changed workflows: providers confirm one-tap late and issue notices; customers can search a typed address without picking a suggestion.
+- Validation: `npm run typecheck`; `npm run lint` with `--ignore-pattern '.claude/**'`; `npm run i18n:validate`; `npm run test:api` (467 passed, including `explorer-rerun-guards.test.ts`); `npm run test:api:postgres` on a disposable local database (35 passed); `npm run test:web:smoke` (65 passed, including `explorer-rerun.spec.ts` and the extended `crew-assignment-flow.spec.ts`); `npm run build:provider-mobile`.
+- Known defects: none found.
+- Screenshot paths: `reports/agent-checkpoints/engineer/latest/provider-late-confirmation-desktop.png`, `…-mobile.png`.
+- Recommended next task: ZIP price minimums for the launch ZIPs (N9) and the provider-facing payment copy (N8).
+
 ## Current checkpoint: early arrival and missed-window notices
 
 - Updated: November 17, 2026 (UTC).
