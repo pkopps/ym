@@ -47,6 +47,10 @@ export class ApiRoutes {
   public static readonly providerClients = "/api/providers/clients";
   public static readonly providerStaffingOverview = "/api/providers/staffing";
   public static readonly providerReviewCrewMatch = "/api/providers/staffing/review";
+  public static readonly providerCrew = "/api/providers/crew";
+  public static readonly providerCrewInvite = "/api/providers/crew/invite";
+  public static readonly providerCrewRemove = "/api/providers/crew/remove";
+  public static readonly providerCrewAssign = "/api/providers/crew/assign";
   public static readonly providerAssignBookingRouteLeader = "/api/providers/staffing/route-leader";
   public static readonly updateProviderSettings = "/api/providers/settings";
   public static readonly providerAssistantCommand = "/api/providers/assistant";

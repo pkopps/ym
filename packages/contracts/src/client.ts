@@ -6,7 +6,7 @@ import type {
   StartProviderCardSetupRequest,
   StartProviderCardSetupResponse
 } from "./finderFees";
-import type { BookingRecoveryOptions, RecoverBookingRequest, ReviewBookingAddressRequest, UpdateBookingAddressResponse, ManageProviderAvailabilityRequest } from "./types";
+import type { ProviderCrewResponse, InviteProviderCrewMemberRequest, RemoveProviderCrewMemberRequest, AssignProviderCrewMemberRequest, BookingRecoveryOptions, RecoverBookingRequest, ReviewBookingAddressRequest, UpdateBookingAddressResponse, ManageProviderAvailabilityRequest } from "./types";
 import type { ZipServiceMinimum, ZipServiceMinimumRecord, UpdateZipServiceMinimumRequest, ProviderServicePrice, ProviderPricingOverview } from "./pricing";
 import {
   ProviderAvailabilityRequest,
@@ -738,6 +738,22 @@ export class MarketplaceApiClient {
 
   public reviewCrewMatch(payload: ReviewCrewMatchRequest) {
     return this.postJson(ApiRoutes.providerReviewCrewMatch, payload);
+  }
+
+  public getProviderCrew(): Promise<ProviderCrewResponse> {
+    return this.getJson(ApiRoutes.providerCrew);
+  }
+
+  public inviteProviderCrewMember(payload: InviteProviderCrewMemberRequest) {
+    return this.postJson<ProviderCrewResponse>(ApiRoutes.providerCrewInvite, payload);
+  }
+
+  public removeProviderCrewMember(payload: RemoveProviderCrewMemberRequest) {
+    return this.postJson<ProviderCrewResponse>(ApiRoutes.providerCrewRemove, payload);
+  }
+
+  public assignProviderCrewMember(payload: AssignProviderCrewMemberRequest) {
+    return this.postJson<ProviderStaffingOverview>(ApiRoutes.providerCrewAssign, payload);
   }
 
   public assignBookingRouteLeader(payload: AssignBookingRouteLeaderRequest) {

@@ -1062,8 +1062,18 @@ export interface ProviderRetentionProgramSummary {
   relationships: ProviderRetentionRelationshipSummary[];
 }
 
+/** What accepted crew need on site. Only sent once the crew member is accepted for the job. */
+export interface CrewSiteInstructions {
+  propertyLabel?: string;
+  customerNotes?: string;
+  gateCode?: string;
+  accessNotes?: string;
+  lawnSizeSqFt?: number;
+}
+
 export interface CrewMatchSummary {
   serviceCategories?: ServiceCategory[];
+  siteInstructions?: CrewSiteInstructions;
   id: string;
   bookingId: string;
   providerId: string;
@@ -1099,6 +1109,35 @@ export interface CrewMatchSummary {
   summary: string;
   cancellationReason?: string;
   cancelledAt?: string;
+}
+
+export interface ProviderCrewMember {
+  crewMemberId: string;
+  fullName: string;
+  email: string;
+  phone: string;
+  status: CrewMemberStatus;
+}
+
+export interface ProviderCrewResponse {
+  crew: ProviderCrewMember[];
+  /** After an invite: a new account was made (they get a password code by email) or an existing crew account joined. */
+  invite?: "new-account" | "joined";
+}
+
+export interface InviteProviderCrewMemberRequest {
+  fullName: string;
+  email: string;
+  phone?: string;
+}
+
+export interface RemoveProviderCrewMemberRequest {
+  crewMemberId: string;
+}
+
+export interface AssignProviderCrewMemberRequest {
+  bookingId: string;
+  crewMemberId: string;
 }
 
 export interface CrewMatchesResponse {
@@ -3659,6 +3698,8 @@ export interface SubmitProviderCredentialRequest {
   jurisdiction?: string;
   referenceNumber?: string;
   documentUrl?: string;
+  /** A photo (JPEG, PNG, WebP) or PDF of the document, as a data URL, up to 1.5 MB. */
+  documentDataUrl?: string;
   issuedAt?: string;
   expiresAt?: string;
 }

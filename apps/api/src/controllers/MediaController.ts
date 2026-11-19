@@ -7,18 +7,25 @@ export class MediaController implements ApiController {
   public canHandle(context: RequestContext): boolean {
     return context.method === "GET" && (
       /^\/api\/media\/evidence\/[^/]+$/.test(context.path) ||
-      /^\/api\/media\/marketing\/[^/]+$/.test(context.path)
+      /^\/api\/media\/marketing\/[^/]+$/.test(context.path) ||
+      /^\/api\/media\/credentials\/[^/]+\/[^/]+$/.test(context.path)
     );
   }
 
   public async handle(context: RequestContext, response: Parameters<ApiController["handle"]>[1]): Promise<void> {
     const marketingUse = context.path.startsWith("/api/media/marketing/");
-    const evidenceId = decodeURIComponent(context.path.split("/").at(-1) ?? "");
-    const photo = await this.platform.getEvidencePhoto(
-      evidenceId,
-      context.query.get("token") ?? undefined,
-      marketingUse
-    );
+    const segments = context.path.split("/");
+    const photo = context.path.startsWith("/api/media/credentials/")
+      ? await this.platform.getCredentialDocument(
+          decodeURIComponent(segments.at(-2) ?? ""),
+          decodeURIComponent(segments.at(-1) ?? ""),
+          context.query.get("token") ?? undefined
+        )
+      : await this.platform.getEvidencePhoto(
+          decodeURIComponent(segments.at(-1) ?? ""),
+          context.query.get("token") ?? undefined,
+          marketingUse
+        );
 
     response.writeHead(200, {
       "Content-Type": photo.contentType,

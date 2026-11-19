@@ -1,5 +1,24 @@
 # Engineer Status
 
+## Current checkpoint: explorer high gaps (N6, N7, N10, N11, N12)
+
+- Updated: November 18, 2026 (UTC).
+- Branch and commit: `claude/explorer-high-gaps`; see the PR for the commit.
+- Completed:
+  - N6: customer visit cards, the next-visit card and plan cards show the day with the arrival window, and the property name and town (or the street and town).
+  - N7: providers see their own setup list (description, services, service area, each required credential) in plain words. The ops review checklist stays in the ops queue. Credential reasons are rewritten for providers.
+  - N10: a new provider gets "We got your application" (in-app and email) saying we'll email them when approved, and the setup summary says the same. Credentials take a photo or PDF (up to 1.5 MB), stored privately in production and opened by ops from a tokened link. The credentials form is translated and says what to do when nothing is entered.
+  - N11: crew accepted for a job see an "On site" block with the property name, gate code, access notes, customer notes, lawn size and the photo steps. Crew who are not accepted see none of it.
+  - N12: providers invite crew by email under "Your crew" (a new person gets an account and a password code; an existing crew account joins), take them off the crew, and add them to a job's open slot. Adding uses the job's crew size, verified workers' compensation and no overlapping job. "Review staffing" now jumps to the job.
+- In progress: none.
+- Remaining: there is no review-time promise for providers yet (needs a decision). The provider app has no crew invite or assign yet, and the crew role there doesn't show the On site block.
+- Blockers: none.
+- Changed workflows: provider sign-up sends a confirmation email; providers manage their own crew and fill slots from it; crew see site details once accepted.
+- Validation: `npm run typecheck`; `npm run lint` with `--ignore-pattern '.claude/**'`; `npm run i18n:validate`; `npm run test:api` (474 passed, including `explorer-high-gaps.test.ts`); `npm run test:api:postgres` on a freshly migrated local database (36 passed); `npm run test:web:smoke` (68 passed, including `explorer-high-gaps.spec.ts`); `npm run build:provider-mobile`.
+- Known defects: none found.
+- Screenshot paths: `reports/agent-checkpoints/engineer/latest/provider-crew-panel-*.png`, `reports/agent-checkpoints/engineer/latest/crew-site-instructions-*.png`.
+- Recommended next task: crew invite, assign and site details in the provider app.
+
 ## Current checkpoint: launch ZIP minimums and provider payment copy (N9, N8)
 
 - Updated: November 18, 2026 (UTC).

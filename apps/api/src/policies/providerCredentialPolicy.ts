@@ -9,14 +9,14 @@ const BASE_REQUIREMENTS: ProviderCredentialRequirement[] = [
   {
     type: "business-registration",
     label: "Business registration",
-    reason: "Confirms that the provider business is identifiable and registered for contracting.",
+    reason: "Shows your business is registered in New Jersey.",
     jurisdiction: "NJ",
     legalReviewRequired: true
   },
   {
     type: "general-liability-insurance",
     label: "General liability insurance",
-    reason: "Protects the customer, provider, and marketplace from common property-service claims.",
+    reason: "Covers property damage and injury claims from your work.",
     jurisdiction: "NJ",
     legalReviewRequired: true
   }
@@ -36,7 +36,7 @@ export function getProviderCredentialRequirements(
       type: "pesticide-applicator-license",
       label: "Pesticide applicator credential",
       reason:
-        "Fertilization and weed-control work can involve regulated pesticide application; launch requires credential and counsel review before matching this category.",
+        "Required in New Jersey for fertilization and weed-control work.",
       jurisdiction: "NJ",
       legalReviewRequired: true
     });

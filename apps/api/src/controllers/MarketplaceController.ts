@@ -50,6 +50,9 @@ import {
   ProcessProviderOnboardingAutomationRequest,
   CreateRefundRequest,
   ReviewCrewMatchRequest,
+  InviteProviderCrewMemberRequest,
+  RemoveProviderCrewMemberRequest,
+  AssignProviderCrewMemberRequest,
   SelectPublicCrewOpportunityRequest,
   RemovePushDeviceRequest,
   RemoveExternalCalendarImportRequest,
@@ -124,6 +127,10 @@ export class MarketplaceController implements ApiController {
       (context.method === "GET" && context.path === "/api/providers/clients") ||
       (context.method === "GET" && context.path === "/api/providers/staffing") ||
       (context.method === "POST" && context.path === "/api/providers/staffing/review") ||
+      (context.method === "GET" && context.path === "/api/providers/crew") ||
+      (context.method === "POST" && context.path === "/api/providers/crew/invite") ||
+      (context.method === "POST" && context.path === "/api/providers/crew/remove") ||
+      (context.method === "POST" && context.path === "/api/providers/crew/assign") ||
       (context.method === "POST" && context.path === "/api/providers/staffing/route-leader") ||
       (context.method === "POST" && context.path === "/api/providers/settings") ||
       (context.method === "POST" && context.path === "/api/providers/assistant") ||
@@ -481,6 +488,31 @@ export class MarketplaceController implements ApiController {
     if (context.method === "POST" && context.path === "/api/providers/staffing/review") {
       const identity = await requireRole(context, this.platform, "provider");
       sendJson(response, 200, await this.platform.reviewCrewMatch(identity.userId, context.body as ReviewCrewMatchRequest));
+      return;
+    }
+
+    if (context.method === "GET" && context.path === "/api/providers/crew") {
+      const identity = await requireRole(context, this.platform, "provider");
+      response.setHeader("Cache-Control", "private, no-store");
+      sendJson(response, 200, await this.platform.listProviderCrew(identity.userId));
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/providers/crew/invite") {
+      const identity = await requireRole(context, this.platform, "provider");
+      sendJson(response, 200, await this.platform.inviteProviderCrewMember(identity.userId, context.body as InviteProviderCrewMemberRequest));
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/providers/crew/remove") {
+      const identity = await requireRole(context, this.platform, "provider");
+      sendJson(response, 200, await this.platform.removeProviderCrewMember(identity.userId, context.body as RemoveProviderCrewMemberRequest));
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/providers/crew/assign") {
+      const identity = await requireRole(context, this.platform, "provider");
+      sendJson(response, 200, await this.platform.assignProviderCrewMember(identity.userId, context.body as AssignProviderCrewMemberRequest));
       return;
     }
 

@@ -5817,3 +5817,46 @@ body:has(.compact-header) .customer-request-spine__index { width: 1.5rem; height
 .early-arrival-opt-in input { width: 1.25rem; height: 1.25rem; margin-top: 0.15rem; flex: none; accent-color: var(--ym-color-primary-strong); }
 .early-arrival-opt-in span { display: grid; gap: 0.15rem; }
 .early-arrival-opt-in small { color: var(--ym-color-muted); font-size: var(--ym-text-sm); }
+
+.crew-site-instructions {
+  border-top: 1px solid var(--ym-color-border);
+  padding-top: 0.75rem;
+}
+
+.crew-site-instructions dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.25rem 0.75rem;
+  margin: 0.5rem 0;
+}
+
+.crew-site-instructions dt {
+  font-weight: 600;
+}
+
+.crew-site-instructions dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.provider-crew-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.provider-crew-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.provider-crew-list li div {
+  display: grid;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}

@@ -179,6 +179,11 @@ import {
   CustomerProperty,
   ObservabilityOverview,
   CustomerProfile,
+  CrewSiteInstructions,
+  ProviderCrewResponse,
+  InviteProviderCrewMemberRequest,
+  RemoveProviderCrewMemberRequest,
+  AssignProviderCrewMemberRequest,
   CurrentUserResponse,
   DisableTwoFactorRequest,
   OpsProfile,
@@ -315,7 +320,7 @@ import {
 } from "../auth";
 import { HttpError } from "../http";
 import { decodePageCursor, encodePageCursor } from "../pagination";
-import { ValidatedEvidenceImage, validateEvidenceImageDataUrl } from "../media/imageValidation";
+import { ValidatedEvidenceImage, validateCredentialDocumentDataUrl, validateEvidenceImageDataUrl } from "../media/imageValidation";
 import { evaluateProviderCredentialReadiness } from "../policies/providerCredentialPolicy";
 import {
   AuthIdentityRecord,
@@ -637,7 +642,16 @@ export class MarketplacePlatformService {
       city: provider.address.city,
       serviceRadiusMiles: provider.serviceRadiusMiles
     });
-    return this.repository.createProvider(provider, passwordHash);
+    const created = await this.repository.createProvider(provider, passwordHash);
+    await this.createNotification({
+      recipientId: created.id,
+      recipientRole: "provider",
+      category: "account",
+      title: "We got your application",
+      body: `We'll review ${created.companyName} and email you at ${created.email} when it's approved. While you wait, set your prices, add your business registration and insurance, and add a card for finder fees.`,
+      actionHref: "/provider/management#provider-setup"
+    });
+    return created;
   }
 
   private finderFees(): FinderFeeService {
@@ -3071,9 +3085,10 @@ export class MarketplacePlatformService {
     if (!jurisdiction) {
       throw new HttpError(400, "Credential jurisdiction is required");
     }
-    if (!payload.referenceNumber?.trim() && !payload.documentUrl?.trim()) {
-      throw new HttpError(400, "A credential reference number or document URL is required");
+    if (!payload.referenceNumber?.trim() && !payload.documentUrl?.trim() && !payload.documentDataUrl?.trim()) {
+      throw new HttpError(400, "Add the policy or registration number, or upload the document.");
     }
+    const document = payload.documentDataUrl?.trim() ? validateCredentialDocumentDataUrl(payload.documentDataUrl.trim()) : undefined;
     if (payload.issuedAt && !Number.isFinite(Date.parse(payload.issuedAt))) {
       throw new HttpError(400, "issuedAt must be a valid ISO timestamp");
     }
@@ -3092,14 +3107,18 @@ export class MarketplacePlatformService {
       (credential) =>
         credential.type === payload.type && credential.jurisdiction === jurisdiction
     );
+    const credentialId = existing?.id ?? crypto.randomUUID();
+    const storedDocument = document
+      ? await this.photoStorage.storeCredentialDocument(providerId, credentialId, payload.documentDataUrl!.trim(), document)
+      : undefined;
     const credential: ProviderCredential = {
-      id: existing?.id ?? crypto.randomUUID(),
+      id: credentialId,
       providerId,
       type: payload.type,
       status: "pending-review",
       jurisdiction,
       referenceNumber: payload.referenceNumber?.trim() || undefined,
-      documentUrl: payload.documentUrl?.trim() || undefined,
+      documentUrl: storedDocument?.deliveryUrl ?? (payload.documentUrl?.trim() || undefined),
       issuedAt: payload.issuedAt,
       expiresAt: payload.expiresAt,
       submittedAt: new Date().toISOString()
@@ -3704,37 +3723,85 @@ export class MarketplacePlatformService {
     }
   }
 
+  /**
+   * What the provider sees in Business setup: their own to-do list, in plain words. The ops review checklist
+   * (experience, workload, incident judgment) stays in the ops queue.
+   */
+  private buildProviderFacingSetup(
+    provider: ProviderProfile,
+    guidance: ProviderVerificationQueueItem["guidance"]
+  ): Pick<ProviderVerificationStatusSummary, "nextSteps" | "checklist"> {
+    const checklist: ProviderVerificationStatusSummary["checklist"] = [];
+    const nextSteps: string[] = [];
+    const bio = provider.bio.trim();
+    checklist.push({
+      key: "profile-completeness",
+      label: "Business description",
+      status: bio.length >= 40 ? "ready" : "missing",
+      detail: bio.length >= 40 ? "Done." : "Describe your services and what customers can expect, in a few sentences."
+    });
+    if (bio.length < 40) nextSteps.push("Describe your business in a few sentences under Business profile.");
+    checklist.push({
+      key: "service-scope",
+      label: "Services",
+      status: provider.categories.length ? "ready" : "missing",
+      detail: provider.categories.length
+        ? provider.categories.map((category) => this.titleCaseCategory(category)).join(", ")
+        : "Choose at least one service."
+    });
+    if (!provider.categories.length) nextSteps.push("Choose the services you offer.");
+    checklist.push({
+      key: "launch-area-fit",
+      label: "Service area",
+      status: provider.serviceRadiusMiles <= 35 ? "ready" : "missing",
+      detail: provider.serviceRadiusMiles <= 35
+        ? `${provider.serviceRadiusMiles} miles from your business address.`
+        : "Set your service area to 35 miles or less."
+    });
+    if (provider.serviceRadiusMiles > 35) nextSteps.push("Set your service area to 35 miles or less under Settings.");
+    const readiness = evaluateProviderCredentialReadiness(provider, provider.credentials ?? []);
+    for (const requirement of readiness.requirements) {
+      const missing = readiness.missingTypes.includes(requirement.type);
+      const expired = readiness.expiredTypes.includes(requirement.type);
+      const pending = readiness.pendingTypes.includes(requirement.type);
+      checklist.push({
+        key: "legal-credentials",
+        label: requirement.label,
+        status: missing || expired ? "missing" : pending ? "review" : "ready",
+        detail: missing
+          ? `${requirement.reason} Add it under Business credentials.`
+          : expired
+            ? "Expired. Add a current one under Business credentials."
+            : pending
+              ? "Submitted. We're checking it."
+              : "Verified."
+      });
+      if (missing || expired) nextSteps.push(`Add your ${requirement.label.toLowerCase()} under Business credentials.`);
+    }
+    if (guidance.checklist.some((item) => item.key === "incident-history" && item.status === "missing")) {
+      nextSteps.push("Reply to our team about the recent disputes or refunds on your account. We'll go over them with you before your listing goes live.");
+    }
+    return { nextSteps, checklist };
+  }
+
   private buildProviderVerificationStatusSummary(
     provider: ProviderProfile,
     guidance: ProviderVerificationQueueItem["guidance"],
     onboardingPlan = this.buildProviderOnboardingAutomationPlan(provider, guidance)
   ): ProviderVerificationStatusSummary {
-    const nextSteps = this.buildProviderVerificationNextSteps(
-      guidance.checklist,
-      provider.verificationStatus
-    );
+    const { nextSteps, checklist } = this.buildProviderFacingSetup(provider, guidance);
+    const resubmit = "Update the items below and save. We'll review your business again automatically.";
 
     if (provider.verificationStatus === "verified") {
-      return {
-        headline: "Your business is verified and visible in search.",
-        summary:
-          nextSteps.length > 0
-            ? "Customers can already discover this business in public YardMatch search results. Keep the flagged launch details current so the listing stays in good standing."
-            : "Customers can now discover this business in public YardMatch search results.",
-        nextSteps,
-        checklist: guidance.checklist,
-        onboardingPlan
-      };
+      return { headline: "Your business is verified and visible in search.", summary: "Customers can find and book your business.", nextSteps, checklist, onboardingPlan };
     }
 
     if (provider.verificationStatus === "rejected") {
       return {
         headline: "Your business needs a few updates before it can go live.",
-        summary:
-          provider.verificationNotes?.trim() ??
-          "Ops reviewed the business and needs the items below updated before it can be shown to customers.",
-        nextSteps,
-        checklist: guidance.checklist,
+        summary: provider.verificationNotes?.trim() ?? resubmit,
+        nextSteps: nextSteps.length ? [resubmit, ...nextSteps] : nextSteps,
+        checklist,
         onboardingPlan
       };
     }
@@ -3742,67 +3809,20 @@ export class MarketplacePlatformService {
     if (provider.verificationReviewedAt && provider.verificationNotes?.trim()) {
       return {
         headline: "Your business is back in review after the latest updates.",
-        summary: `Ops is re-reviewing the business. Last review note: ${provider.verificationNotes.trim()}`,
+        summary: `We're reviewing your updates and will email you at ${provider.email} when we're done. Last note from our team: ${provider.verificationNotes.trim()}`,
         nextSteps,
-        checklist: guidance.checklist,
+        checklist,
         onboardingPlan
       };
     }
 
     return {
       headline: "Your business is pending review before it appears in search.",
-      summary:
-        guidance.recommendedAction === "manual-review"
-          ? "Ops is checking route fit, service scope, and reliability details before this business goes live."
-          : "Ops will review the business profile, service area, and marketplace details before customers can book.",
+      summary: `We'll review your business and email you at ${provider.email} when it's approved.`,
       nextSteps,
-      checklist: guidance.checklist,
+      checklist,
       onboardingPlan
     };
-  }
-
-  private buildProviderVerificationNextSteps(
-    checklist: ProviderVerificationQueueItem["guidance"]["checklist"],
-    verificationStatus: ProviderProfile["verificationStatus"]
-  ) {
-    const steps = checklist
-      .filter((item) => item.status !== "ready")
-      .map((item) => this.getProviderVerificationNextStep(item.key));
-    const uniqueSteps = Array.from(new Set(steps));
-
-    if (verificationStatus === "rejected" && uniqueSteps.length > 0) {
-      return [
-        "Update the profile or dispatch settings below and save them to send the business back into ops review automatically.",
-        ...uniqueSteps
-      ];
-    }
-
-    return uniqueSteps;
-  }
-
-  private getProviderVerificationNextStep(
-    key: ProviderVerificationQueueItem["guidance"]["checklist"][number]["key"]
-  ) {
-    switch (key) {
-      case "profile-completeness":
-        return "Expand the business description with enough detail to explain service quality, reliability, and what customers should expect.";
-      case "service-scope":
-        return "Add at least one launch service category so GreenRain knows what work this business is ready to fulfill.";
-      case "launch-area-fit":
-        return "Tighten the service radius to the launch pocket the team can reliably serve right now.";
-      case "experience-signal":
-        return "Update the years-of-experience detail so ops has a clearer reliability signal before go-live.";
-      case "operational-readiness":
-        return "Lower the minimum booking lead time or clear enough workload headroom to keep launch booking promises realistic.";
-      case "service-quality-expectations":
-        return "Be ready to handle evidence requests, service recovery, and customer communication at the launch service standard.";
-      case "incident-history":
-        return "Work with ops to document recent disputes, refunds, or active field exceptions and confirm what changed before public launch visibility.";
-      case "intervention-readiness":
-        return "Set staffing mode, crew review timing, and departure reminders so late updates and field exceptions can be handled cleanly.";
-      case "legal-credentials":
-        return "Submit current business-registration, insurance, and category-specific credential evidence for ops review before public launch visibility.";
-    }
   }
 
   private isDetailedProviderApprovalOverrideNote(note: string | undefined) {
@@ -4327,6 +4347,138 @@ export class MarketplacePlatformService {
     };
   }
 
+  /** The provider's own crew: people they invited, who work only for them. */
+  public async listProviderCrew(providerId: string): Promise<ProviderCrewResponse> {
+    const crew = (await this.repository.listCrewMembers()).filter((member) => member.assignedProviderId === providerId);
+    return {
+      crew: crew
+        .map((member) => ({ crewMemberId: member.id, fullName: member.fullName, email: member.email, phone: member.phone, status: member.status }))
+        .sort((left, right) => left.fullName.localeCompare(right.fullName))
+    };
+  }
+
+  /**
+   * Invites someone to the provider's crew. A new person gets a crew account and an email with a code to set their
+   * password; someone who already has a crew account joins this crew. Crew work for one business at a time.
+   */
+  public async inviteProviderCrewMember(providerId: string, payload: InviteProviderCrewMemberRequest): Promise<ProviderCrewResponse> {
+    const provider = await this.repository.findProviderById(providerId);
+    if (!provider) throw new HttpError(404, "Provider not found");
+    const fullName = typeof payload?.fullName === "string" ? payload.fullName.trim() : "";
+    const email = typeof payload?.email === "string" ? payload.email.trim().toLowerCase() : "";
+    const phone = typeof payload?.phone === "string" ? payload.phone.trim() : "";
+    if (fullName.length < 2 || fullName.length > 120) throw new HttpError(400, "Enter the crew member's full name.");
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) throw new HttpError(400, "Enter a valid email address.");
+
+    const invite = await this.repository.withLock(`crew-invite:${email}`, async (repository): Promise<"new-account" | "joined"> => {
+      const identity = await repository.findAuthIdentityByEmail(email);
+      if (identity && identity.role !== "crew-member") {
+        throw new HttpError(409, "That email belongs to another kind of YardMatch account. Use a different email for this crew member.");
+      }
+      if (identity) {
+        const existing = await repository.findCrewMemberById(identity.userId);
+        if (existing?.assignedProviderId && existing.assignedProviderId !== providerId) {
+          throw new HttpError(409, "This person is already on another business's crew.");
+        }
+        if (existing?.assignedProviderId === providerId) return "joined";
+        await repository.updateCrewMember(identity.userId, { assignedProviderId: providerId });
+        await this.withRepository(repository).createNotification({
+          recipientId: identity.userId, recipientRole: "crew-member", category: "staffing",
+          title: `You joined ${provider.companyName}'s crew`,
+          body: `${provider.companyName} can now add you to their jobs. You'll see them under Jobs.`,
+          actionHref: "/crew"
+        });
+        return "joined";
+      }
+      const created = await this.withRepository(repository).registerUser({
+        role: "crew-member", fullName, email, phone: phone || provider.phone, address: provider.address,
+        categories: provider.categories, availableWeekdays: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+        willingToTravelMiles: provider.serviceRadiusMiles
+      }, await hashPassword(this.generateTemporaryStrongPassword()));
+      await repository.updateCrewMember(created.id, { assignedProviderId: providerId });
+      await this.withRepository(repository).createNotification({
+        recipientId: created.id, recipientRole: "crew-member", category: "staffing",
+        title: `${provider.companyName} added you to their crew`,
+        body: `Set your password with the code we emailed you, then sign in to see your jobs.`,
+        actionHref: "/crew"
+      });
+      return "new-account";
+    });
+    // Only a new account needs a password; someone who already has one just signs in.
+    if (invite === "new-account") await this.requestPasswordReset({ email }).catch(() => undefined);
+    return { ...(await this.listProviderCrew(providerId)), invite };
+  }
+
+  /** Takes someone off the provider's crew. Jobs they already accepted stay with them. */
+  public async removeProviderCrewMember(providerId: string, payload: RemoveProviderCrewMemberRequest): Promise<ProviderCrewResponse> {
+    const member = await this.repository.findCrewMemberById(payload?.crewMemberId);
+    if (!member || member.assignedProviderId !== providerId) throw new HttpError(404, "That person isn't on your crew.");
+    await this.repository.updateCrewMember(member.id, { assignedProviderId: undefined });
+    return this.listProviderCrew(providerId);
+  }
+
+  /**
+   * Puts one of the provider's own crew on a job. Uses the same limits as accepting a match: the job's crew size,
+   * workers' compensation on file, and no overlapping accepted job.
+   */
+  public async assignProviderCrewMember(providerId: string, payload: AssignProviderCrewMemberRequest): Promise<ProviderStaffingOverview> {
+    const [booking, member] = await Promise.all([
+      this.repository.findBookingById(payload?.bookingId),
+      this.repository.findCrewMemberById(payload?.crewMemberId)
+    ]);
+    if (!booking || booking.providerId !== providerId) throw new HttpError(404, "Booking not found");
+    if (!member || member.assignedProviderId !== providerId) throw new HttpError(404, "That person isn't on your crew.");
+    await this.repository.withLock(this.crewStaffingLockKey(providerId), (repository) =>
+      repository.withLock(`crew-schedule:${member.id}`, async (locked) => {
+        const platform = this.withRepository(locked);
+        const current = await locked.findBookingById(booking.id);
+        if (!current || !["requested", "confirmed"].includes(current.status) || Date.parse(current.scheduledStartIso) <= Date.now()) {
+          throw new HttpError(409, "This job can't take crew anymore.");
+        }
+        const provider = await locked.findProviderById(providerId);
+        if (!provider || !evaluateProviderCredentialReadiness(provider, provider.credentials ?? []).crewEngagementAllowed) {
+          throw new HttpError(409, "Add verified workers' compensation insurance under Business credentials before putting crew on jobs.");
+        }
+        if (member.status === "off-duty") throw new HttpError(409, `${member.fullName} is off duty.`);
+        const [bookingMatches, memberMatches, customer] = await Promise.all([
+          locked.listCrewMatchesForBookings([current.id]),
+          locked.listCrewMatchesForCrewMember(member.id),
+          locked.findCustomerById(current.customerId)
+        ]);
+        const existing = bookingMatches.find((match) => match.crewMemberId === member.id);
+        if (existing?.status === "accepted") return;
+        const property = customer?.properties.find((item) => item.id === current.servicePropertyId);
+        const acceptedCount = bookingMatches.filter((match) => match.status === "accepted").length;
+        if (acceptedCount >= platform.estimateRequiredCrewMembers(current, property)) {
+          throw new HttpError(409, "This job already has the crew it needs.");
+        }
+        const acceptedJobs = platform.getAcceptedCrewBookings(member.id, memberMatches, await platform.listAcceptedCrewJobBookings(memberMatches));
+        if (acceptedJobs.some((job) => job.id !== current.id && platform.doIntervalsOverlap(job.scheduledStartIso, job.scheduledEndIso, current.scheduledStartIso, current.scheduledEndIso))) {
+          throw new HttpError(409, `${member.fullName} already has a job at that time.`);
+        }
+        const now = new Date().toISOString();
+        if (existing) {
+          await locked.updateCrewMatch(existing.id, { status: "accepted", reviewedAt: now, cancellationReason: undefined, cancelledAt: undefined });
+        } else {
+          await locked.createCrewMatch({
+            id: crypto.randomUUID(), bookingId: current.id, providerId, crewMemberId: member.id, crewMemberName: member.fullName,
+            crewMemberPhone: member.phone, categories: member.categories, availableWeekdays: member.availableWeekdays ?? ["Mon", "Tue", "Wed", "Thu", "Fri"],
+            preferredSchedule: member.preferredSchedule, willingToTravelMiles: member.willingToTravelMiles, hasOwnEquipment: member.hasOwnEquipment,
+            winterWorkEnabled: member.winterWorkEnabled ?? true, status: "accepted", autoAccepted: false,
+            distanceMiles: this.geoService.distanceMiles(member.address, current.serviceAddress),
+            hourlyRateCents: this.estimateCrewHourlyRate(current.category), createdAt: now, reviewedAt: now
+          });
+        }
+        await platform.createNotification({
+          recipientId: member.id, recipientRole: "crew-member", category: "staffing",
+          title: `New job with ${provider.companyName}`,
+          body: `${this.titleCaseCategory(current.category)} at ${current.serviceAddress.line1}, ${current.serviceAddress.city}. Open Jobs for the time and details.`,
+          actionHref: "/crew"
+        });
+      }));
+    return this.getProviderStaffingOverview(providerId);
+  }
+
   public async reviewCrewMatch(
     providerId: string,
     payload: ReviewCrewMatchRequest
@@ -4526,6 +4678,27 @@ export class MarketplacePlatformService {
       }
     }
 
+    // Gate codes and notes go only to crew the provider accepted, and only while the visit is still ahead.
+    const siteByBookingId = new Map<string, CrewSiteInstructions>();
+    const siteBookings = ownMatches
+      .filter((match) => match.status === "accepted")
+      .map((match) => bookingsById.get(match.bookingId))
+      .filter((booking): booking is Booking => Boolean(booking) && !["completed", "cancelled", "refunded"].includes(booking!.status));
+    const customers = await Promise.all([...new Set(siteBookings.map((booking) => booking.customerId))].map((id) => this.repository.findCustomerById(id)));
+    const customersById = new Map(customers.filter((customer): customer is CustomerProfile => Boolean(customer)).map((customer) => [customer.id, customer]));
+    for (const booking of siteBookings) {
+      const property = booking.servicePropertyId
+        ? customersById.get(booking.customerId)?.properties.find((candidate) => candidate.id === booking.servicePropertyId)
+        : undefined;
+      siteByBookingId.set(booking.id, {
+        propertyLabel: property?.label,
+        customerNotes: booking.notes?.trim() || undefined,
+        gateCode: property?.gateCode?.trim() || undefined,
+        accessNotes: property?.accessNotes?.trim() || undefined,
+        lawnSizeSqFt: property?.lawnSizeSqFt
+      });
+    }
+
     const crewMatches = ownMatches
       .flatMap((match) => {
         const provider = providersById.get(match.providerId);
@@ -4534,7 +4707,9 @@ export class MarketplacePlatformService {
           return [];
         }
 
-        return [this.buildCrewMatchSummary(match, provider, booking, acceptedCountByBookingId.get(booking.id) ?? 0)];
+        const summary = this.buildCrewMatchSummary(match, provider, booking, acceptedCountByBookingId.get(booking.id) ?? 0);
+        const site = match.status === "accepted" ? siteByBookingId.get(booking.id) : undefined;
+        return [site ? { ...summary, siteInstructions: site } : summary];
       })
       .sort((left, right) => left.scheduledStartIso.localeCompare(right.scheduledStartIso));
 
@@ -5861,6 +6036,21 @@ export class MarketplacePlatformService {
     }
 
     return updatedBooking;
+  }
+
+  /** A credential document for whoever holds its tokened link (the provider and ops reviewers). */
+  public async getCredentialDocument(providerId: string, credentialId: string, accessToken: string | undefined): Promise<ReadEvidencePhoto> {
+    const provider = await this.repository.findProviderById(providerId);
+    const credential = provider?.credentials?.find((candidate) => candidate.id === credentialId);
+    let stored: URL | undefined;
+    try { stored = credential?.documentUrl ? new URL(credential.documentUrl) : undefined; } catch { stored = undefined; }
+    const version = stored?.searchParams.get("v") ?? undefined;
+    if (!stored || !version || !/^[a-f0-9]{16}$/.test(version) || !this.secureStringsEqual(accessToken, stored.searchParams.get("token") ?? undefined)) {
+      throw new HttpError(404, "Document not found");
+    }
+    const file = await this.photoStorage.read(this.photoStorage.credentialDocumentPathname(providerId, credentialId, version));
+    if (!file) throw new HttpError(404, "Document not found");
+    return file;
   }
 
   public async getEvidencePhoto(

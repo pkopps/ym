@@ -51,13 +51,14 @@ test("provider signup reaches a complete, verified management profile", async ({
   await page.getByRole("button", { name: "Publish opening" }).click();
   await expect(page.getByText("Opening published. Customers can request it after marketplace approval.")).toBeVisible();
 
+  const credentialLabels: Record<string, string> = { "business-registration": "Business registration", "general-liability-insurance": "General liability insurance", "workers-compensation": "Workers' compensation insurance" };
   for (const type of ["business-registration", "general-liability-insurance", "workers-compensation"]) {
     await page.getByLabel("Credential type", { exact: true }).selectOption(type);
-    await page.getByLabel("Registration or policy reference").fill(`policy-${type}`);
-    await page.getByLabel("Credential expiration").fill("2028-01-01");
+    await page.getByLabel("Registration or policy number").fill(`policy-${type}`);
+    await page.getByLabel("Expiration date").fill("2028-01-01");
     await page.getByRole("button", { name: "Submit credential", exact: true }).click();
     await expect(page.getByText("Credential submitted for review.", { exact: true })).toBeVisible();
-    await expect(page.getByText(`${type.replaceAll("-", " ")}: pending-review`, { exact: true })).toBeVisible();
+    await expect(page.getByText(`${credentialLabels[type]}: we're checking it`, { exact: true })).toBeVisible();
   }
   await loginUi(page, "ops", opsEmail, opsPassword);
   await page.locator('.workspace-nav a[href="#ops-providers"]').click();
@@ -69,12 +70,12 @@ test("provider signup reaches a complete, verified management profile", async ({
   await expect(liability.getByText("general liability insurance: rejected", { exact: true })).toBeVisible();
   await loginUi(page, "provider", email);
   await expect(page).toHaveURL(/\/provider\/management$/);
-  await expect(page.getByText(/general liability insurance: rejected.*Please provide/)).toBeVisible();
+  await expect(page.getByText(/General liability insurance: needs an update.*Please provide/)).toBeVisible();
   await page.getByLabel("Credential type", { exact: true }).selectOption("general-liability-insurance");
-  await page.getByLabel("Registration or policy reference").fill("updated-current-liability-policy");
-  await page.getByLabel("Credential expiration").fill("2028-01-01");
+  await page.getByLabel("Registration or policy number").fill("updated-current-liability-policy");
+  await page.getByLabel("Expiration date").fill("2028-01-01");
   await page.getByRole("button", { name: "Submit credential", exact: true }).click();
-  await expect(page.getByText("general liability insurance: pending-review", { exact: true })).toBeVisible();
+  await expect(page.getByText("General liability insurance: we're checking it", { exact: true })).toBeVisible();
   await loginUi(page, "ops", opsEmail, opsPassword);
   await expect(page).toHaveURL(/\/ops$/);
   await page.locator('.workspace-nav a[href="#ops-providers"]').click();

@@ -109,6 +109,17 @@ function formatVisitDay(i18n: I18nInstance, iso: string) {
   return i18n.formatDate(iso, { timeZone: "America/New_York", weekday: "short", month: "short", day: "numeric" });
 }
 
+/** "Sat, Nov 21 · Morning • 7:00 AM - 12:00 PM": the day plus the arrival window. */
+function formatVisitWhen(i18n: I18nInstance, iso: string) {
+  return `${formatVisitDay(i18n, iso)} · ${formatBookingWindowSummary(iso)}`;
+}
+
+/** "Beach house · Manahawkin" when the visit is at a saved property, else the street and town. */
+function formatVisitPlace(visit: { servicePropertyId?: string; serviceAddress: Address }, properties: { id: string; label: string }[]) {
+  const property = visit.servicePropertyId ? properties.find(item => item.id === visit.servicePropertyId) : undefined;
+  return property ? `${property.label} · ${visit.serviceAddress.city}` : `${visit.serviceAddress.line1}, ${visit.serviceAddress.city}`;
+}
+
 function formatAddress(address: Address) {
   return [address.line1, address.line2].filter(Boolean).join(", ") + `, ${address.city}, ${address.state}`;
 }
@@ -1626,14 +1637,14 @@ export function CustomerLiveDashboard() {
           <div>
             <span className="eyebrow">{(booking.services?.length ? booking.services.map(item => item.category) : [booking.category]).map(category => i18n.t(serviceCategoryToI18nKey(category))).join(" · ")}</span>
             <h2>{formatBookingStatusTitle(i18n, booking)}</h2>
-            <p>{providerName}</p>
+            <p>{formatVisitPlace(booking, customer?.properties ?? [])} · {providerName}</p>
           </div>
           <strong>{i18n.formatCurrency(booking.totalCents, "USD", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
         </div>
         <p className="history-card__summary">{getBookingStateMessage(i18n, booking, providerName, paymentRecord)}</p>
         <div className="chip-row">
           <span className="result-badge result-badge--neutral">
-            {formatBookingWindowSummary(booking.scheduledStartIso)}
+            {formatVisitWhen(i18n, booking.scheduledStartIso)}
           </span>
           {paymentsEnabled ? <span className="result-badge result-badge--neutral">{paymentLabel}</span> : null}
         </div>
@@ -2097,8 +2108,8 @@ export function CustomerLiveDashboard() {
       <article className="list-panel">
         <div className="search-result-title">
           <div>
-            <h3>{summary.providerName}</h3>
-            <p>{i18n.t("customer_live.plan.category_plan", { category: i18n.t(serviceCategoryToI18nKey(summary.plan.category)) })}</p>
+            <h3>{i18n.t("customer_live.plan.category_plan", { category: i18n.t(serviceCategoryToI18nKey(summary.plan.category)) })} · {formatVisitPlace(summary.plan, customer?.properties ?? [])}</h3>
+            <p>{summary.providerName}</p>
           </div>
           <div className="chip-row">
             <span className="result-badge result-badge--neutral">{i18n.t("customer_live.plan.active")}</span>
@@ -2805,7 +2816,7 @@ export function CustomerLiveDashboard() {
                 </div>
                 <div>
                   <span>{i18n.t("customer_live.label.when")}</span>
-                  <strong>{formatBookingWindowSummary(nextBooking.scheduledStartIso)}</strong>
+                  <strong>{formatVisitWhen(i18n, nextBooking.scheduledStartIso)}</strong>
                 </div>
                 <div>
                   <span>{i18n.t("customer_live.provider.provider")}</span>
@@ -2817,7 +2828,7 @@ export function CustomerLiveDashboard() {
                 </div>
                 <div>
                   <span>{i18n.t("customer_live.label.property")}</span>
-                  <strong>{nextBooking.serviceAddress.line1}</strong>
+                  <strong>{formatVisitPlace(nextBooking, customer?.properties ?? [])}</strong>
                 </div>
                 <div>
                   <span>{i18n.t("customer_live.progress.price")}</span>
@@ -2962,7 +2973,7 @@ export function CustomerLiveDashboard() {
                   <p>
                     {primaryRecurringPlan.upcomingBooking
                       ? i18n.t("customer_live.repeat.next_visit_with_provider", {
-                          window: formatBookingWindowSummary(primaryRecurringPlan.upcomingBooking.scheduledStartIso),
+                          window: `${formatVisitWhen(i18n, primaryRecurringPlan.upcomingBooking.scheduledStartIso)} · ${formatVisitPlace(primaryRecurringPlan.plan, customer?.properties ?? [])}`,
                           provider: primaryRecurringPlan.providerName
                         })
                       : i18n.t("customer_live.repeat.provider_still_set", {
