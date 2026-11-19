@@ -1,4 +1,4 @@
-import type { FinderFeeChargeRecord, ProviderBillingAccountRecord, ZipServiceMinimumRecord } from "@yardmatch/contracts";
+import { launchZipMinimumRecords, type FinderFeeChargeRecord, type ProviderBillingAccountRecord, type ZipServiceMinimumRecord } from "@yardmatch/contracts";
 import { FinderFeeRelationshipConflictError, findFinderFeeUniqueConflict, matchesFinderFeeQuery, type FinderFeeChargeQuery } from "./finderFeeRecords";
 import { summarizeNotificationHealth } from "./notificationHealth";
 import { buildProviderClientProperties } from "../services/providerClients";
@@ -56,7 +56,9 @@ import {
 import type { CustomerReferralRecord } from "./customerReferrals";
 
 export class InMemoryMarketplaceRepository implements MarketplaceRepository {
-  private readonly zipServiceMinimums = new Map<string, ZipServiceMinimumRecord>();
+  private readonly zipServiceMinimums = new Map<string, ZipServiceMinimumRecord>(
+    launchZipMinimumRecords().map(record => [`${record.postalCode}:${record.category}`, record])
+  );
   public async listZipServiceMinimums(postalCode: string): Promise<ZipServiceMinimumRecord[]> {
     return structuredClone([...this.zipServiceMinimums.values()].filter(row => row.postalCode === postalCode));
   }

@@ -24,7 +24,7 @@ export function ProviderCredentialsPanel({ provider, onUpdated }: { provider: Pr
   }
   return <section className="list-panel">
     <h3>Business credentials</h3>
-    <p>Submit your registration or policy reference for review. Marketplace approval and payout setup are separate. Your business engages, supervises, insures, and compensates its crew.</p>
+    <p>Submit your registration or policy reference for review. Your business engages, supervises, insures, and compensates its crew.</p>
     <ul>{provider.credentialReadiness?.requirements.map(requirement => <li key={requirement.type}>{requirement.label}: {requirement.reason}</li>)}</ul>
     <ul>{provider.credentials?.map(credential => <li key={credential.id}>{credential.type.replaceAll("-", " ")}: {credential.expiresAt && Date.parse(credential.expiresAt) <= Date.now() ? "expired" : credential.status} {credential.reviewNotes ? `— ${credential.reviewNotes}` : ""}</li>)}</ul>
     <form className="auth-form-stack" onSubmit={submit}>

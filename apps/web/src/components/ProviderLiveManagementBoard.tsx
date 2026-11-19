@@ -8,6 +8,7 @@ import type { PropertyPhotoArea } from "@yardmatch/contracts";
 
 import { BookingSchedulePanel } from "./BookingSchedulePanel";
 import { ConfirmActionDialog } from "./ConfirmActionDialog";
+import { useLaunchFeatureFlags } from "./LaunchFeatureFlagsProvider";
 import { WorkspaceSection } from "./WorkspaceSection";
 
 import {
@@ -297,6 +298,8 @@ const providerCategoryOptions: ServiceCategory[] = [
 
 export function ProviderLiveManagementBoard() {
   const i18n = useI18n();
+  // At launch customers pay providers directly, so there is no YardMatch payout to schedule.
+  const { payments: paymentsEnabled } = useLaunchFeatureFlags();
   const { session, sessionReady } = useStoredWebSession();
   const [accessDenied, setAccessDenied] = useState(false);
   const [overview, setOverview] = useState<ProviderStaffingOverview | undefined>();
@@ -2218,7 +2221,7 @@ export function ProviderLiveManagementBoard() {
             </button>
           </div>
         </article>
-        <article className="card">
+        {paymentsEnabled ? <article className="card">
           <span className="eyebrow">{i18n.t("provider_live.settings.payout_timing")}</span>
           <h2>{provider ? formatWeekdayLabel(i18n, provider.weeklyPayoutDay) : formatWeekdayLabel(i18n, "Thu")}</h2>
           <p>{i18n.t("provider_live.settings.payout_security_body")}</p>
@@ -2273,7 +2276,7 @@ export function ProviderLiveManagementBoard() {
               {i18n.t("provider_live.settings.weekly_only")}
             </button>
           </div>
-        </article>
+        </article> : null}
       </section>
 
 

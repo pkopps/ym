@@ -1,5 +1,21 @@
 # Engineer Status
 
+## Current checkpoint: launch ZIP minimums and provider payment copy (N9, N8)
+
+- Updated: November 18, 2026 (UTC).
+- Branch and commit: `claude/zip-minimums-provider-copy`; see the PR for the commit.
+- Completed:
+  - N9: migration `20261118010000_launch_zip_minimums` gives the six launch ZIPs (08005, 08050, 08758, 08731, 08753, 08008) a minimum for every service, equal to the platform starting price, with a "Launch default" audit entry. Existing minimums are left alone. The in-memory repository seeds the same rows from `launchZipMinimumRecords()` in contracts. Ops admins can still change any minimum.
+  - N8: the provider payout timing card is hidden when payments are off; "Marketplace approval and payout setup are separate" is removed from credentials; the provider standards and help article now describe direct payment and finder fees; the card-setup message says what to do next.
+- In progress: none.
+- Remaining: the help-center article is static, so it describes the launch model (direct pay) even if payments are switched on later. The provider app's support topic list still includes "Payouts".
+- Blockers: none.
+- Changed workflows: providers in launch ZIPs can set prices; ops pricing history shows the launch default first.
+- Validation: `npm run typecheck`; `npm run lint` with `--ignore-pattern '.claude/**'`; `npm run i18n:validate`; `npm run test:api` (469 passed); a fresh local database migrated with `deploy-database.mjs` (78 minimum rows; `prisma migrate diff --exit-code`, no drift); `npm run test:api:postgres` on it (36 passed, including the migration check); `npm run test:web:smoke` (64 passed; `provider-pricing.spec.ts` failed on history order, was fixed, and passed when re-run with `provider-billing.spec.ts`); browser pass with launch flags off (payout card hidden, ZIP minimums shown, new card message).
+- Known defects: none found.
+- Screenshot paths: none new.
+- Recommended next task: the remaining medium findings in `reports/explorer/summary-2026-11-17.md`, starting with dashboard cards that show no date or property (N6).
+
 ## Current checkpoint: explorer re-run top bugs (N1–N5)
 
 - Updated: November 17, 2026 (UTC).
