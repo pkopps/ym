@@ -151,3 +151,30 @@ export function validateEvidenceImageDataUrl(imageDataUrl: string): ValidatedEvi
     height: dimensions.height
   };
 }
+
+export interface ValidatedCredentialDocument {
+  bytes: Buffer;
+  contentType: EvidenceImageContentType | "application/pdf";
+}
+
+export const MAX_CREDENTIAL_DOCUMENT_BYTES = 1_500_000;
+
+/** A photo of the document (JPEG, PNG or WebP) or a PDF, up to 1.5 MB. */
+export function validateCredentialDocumentDataUrl(dataUrl: string): ValidatedCredentialDocument {
+  if (/^data:image\//i.test(dataUrl)) {
+    const image = validateEvidenceImageDataUrl(dataUrl);
+    return { bytes: image.bytes, contentType: image.contentType };
+  }
+  const match = dataUrl.match(/^data:application\/pdf;base64,([A-Za-z0-9+/]*={0,2})$/i);
+  if (!match?.[1] || match[1].length % 4 !== 0) {
+    throw new HttpError(400, "Upload a photo (JPEG, PNG or WebP) or a PDF of the document.");
+  }
+  const bytes = Buffer.from(match[1], "base64");
+  if (bytes.length > MAX_CREDENTIAL_DOCUMENT_BYTES) {
+    throw new HttpError(400, "That file is over 1.5 MB. Upload a smaller PDF or a photo of the document.");
+  }
+  if (bytes.subarray(0, 5).toString("latin1") !== "%PDF-") {
+    throw new HttpError(400, "That file isn't a valid PDF. Upload the PDF again or a photo of the document.");
+  }
+  return { bytes, contentType: "application/pdf" };
+}

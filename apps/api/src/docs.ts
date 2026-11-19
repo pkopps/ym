@@ -1387,6 +1387,41 @@ export const apiSpec = {
         }
       }
     },
+    "/api/providers/crew": {
+      get: {
+        tags: ["Providers"],
+        summary: "List the provider's own crew",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "The provider's crew" } }
+      }
+    },
+    "/api/providers/crew/invite": {
+      post: {
+        tags: ["Providers"],
+        summary: "Invite someone to the provider's crew by email",
+        security: [{ bearerAuth: [] }],
+        requestBody: { required: true, content: { "application/json": { example: { fullName: "Riley Crew", email: "riley@example.com" } } } },
+        responses: { "200": { description: "The provider's crew" } }
+      }
+    },
+    "/api/providers/crew/remove": {
+      post: {
+        tags: ["Providers"],
+        summary: "Take someone off the provider's crew",
+        security: [{ bearerAuth: [] }],
+        requestBody: { required: true, content: { "application/json": { example: { crewMemberId: "crew_123" } } } },
+        responses: { "200": { description: "The provider's crew" } }
+      }
+    },
+    "/api/providers/crew/assign": {
+      post: {
+        tags: ["Providers"],
+        summary: "Put one of the provider's crew on a job",
+        security: [{ bearerAuth: [] }],
+        requestBody: { required: true, content: { "application/json": { example: { bookingId: "booking_123", crewMemberId: "crew_123" } } } },
+        responses: { "200": { description: "The provider's crew" } }
+      }
+    },
     "/api/providers/staffing/route-leader": {
       post: {
         tags: ["Providers"],

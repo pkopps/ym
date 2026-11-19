@@ -10758,7 +10758,8 @@ test("notifications track booking, staffing, and review milestones across roles"
     email: provider.email,
     role: "provider"
   });
-  assert.equal(providerNotifications.unreadCount, 1);
+  // Sign-up sends "We got your application"; the booking request is the newest.
+  assert.equal(providerNotifications.unreadCount, 2);
   assert.equal(providerNotifications.notifications[0]?.title, "New booking request");
 
   await platform.confirmBooking(provider.id, { bookingId: booking.id });
@@ -10852,9 +10853,11 @@ test("notifications generate external delivery records for push, email, and sms"
     role: "provider"
   });
 
-  const channels = deliveries.deliveries.map((delivery) => delivery.channel).sort();
+  // Only the booking request; the sign-up notice is checked separately.
+  const bookingDeliveries = deliveries.deliveries.filter((delivery) => delivery.title !== "We got your application");
+  const channels = bookingDeliveries.map((delivery) => delivery.channel).sort();
   assert.deepEqual(channels, ["email", "push", "sms"]);
-  assert.ok(deliveries.deliveries.every((delivery) => delivery.status === "sent"));
+  assert.ok(bookingDeliveries.every((delivery) => delivery.status === "sent"));
 });
 
 test("anonymous selection does not fill an opening or notify auto-accept providers", async () => {
@@ -11197,7 +11200,8 @@ test("registered Expo push devices create retryable push deliveries", async () =
     email: provider.email,
     role: "provider"
   });
-  const pushDelivery = deliveries.deliveries.find((delivery) => delivery.channel === "push");
+  // The booking request's push, sent after the device registered (the sign-up notice came before it).
+  const pushDelivery = deliveries.deliveries.find((delivery) => delivery.channel === "push" && delivery.title === "New booking request");
 
   assert.ok(pushDelivery);
   assert.equal(pushDelivery?.destination, "ExponentPushToken[providerpush123]");
@@ -11220,7 +11224,8 @@ test("configured Resend email delivery uses the real email provider path", async
 
   globalThis.fetch = (async (_input, init) => {
     recordedAuthorization = String(init?.headers && "Authorization" in init.headers ? init.headers.Authorization : "");
-    recordedBody = String(init?.body ?? "");
+    // Every email body sent, so the booking email is found alongside the sign-up email.
+    recordedBody += String(init?.body ?? "");
     return {
       ok: true,
       json: async () => ({
@@ -11285,7 +11290,7 @@ test("configured Resend email delivery uses the real email provider path", async
       email: provider.email,
       role: "provider"
     });
-    const emailDelivery = deliveries.deliveries.find((delivery) => delivery.channel === "email");
+    const emailDelivery = deliveries.deliveries.find((delivery) => delivery.channel === "email" && delivery.title === "New booking request");
 
     assert.ok(emailDelivery);
     assert.equal(emailDelivery?.provider, "resend");
@@ -15211,7 +15216,7 @@ test("provider verification guidance blocks launch approval when incident histor
 
   const profile = await platform.getProviderProfile(provider.id);
   assert.ok(
-    profile.verificationSummary?.nextSteps.some((step) => /document recent disputes/i.test(step))
+    profile.verificationSummary?.nextSteps.some((step) => /recent disputes or refunds/i.test(step))
   );
 
   await assert.rejects(
@@ -15257,14 +15262,20 @@ test("provider profiles include backend-authored verification next steps while p
   assert.equal(profile.verificationStatus, "pending-review");
   assert.ok(profile.verificationSummary);
   assert.match(profile.verificationSummary?.headline ?? "", /pending review/i);
-  assert.ok(
-    profile.verificationSummary?.nextSteps.some((step) => /service radius|launch pocket/i.test(step))
-  );
+  // A 35-mile area is within what providers may set; whether it fits is an ops call, not a provider to-do.
+  assert.equal(profile.verificationSummary?.nextSteps.some((step) => /service area/i.test(step)), false);
   assert.ok(
     profile.verificationSummary?.checklist.some(
-      (item) => item.key === "launch-area-fit" && item.status === "review"
+      (item) => item.key === "launch-area-fit" && item.label === "Service area" && item.status === "ready"
     )
   );
+  // Providers never see the ops reviewer's wording.
+  const providerFacingText = [
+    profile.verificationSummary?.headline, profile.verificationSummary?.summary, ...(profile.verificationSummary?.nextSteps ?? []),
+    ...(profile.verificationSummary?.checklist ?? []).flatMap((item) => [item.label, item.detail])
+  ].join(" ");
+  assert.doesNotMatch(providerFacingText, /\bops\b|launch|counsel|signal|intervention|business-registration|general-liability-insurance/i);
+  assert.match(profile.verificationSummary?.summary ?? "", /email you at provider-pending-summary@example\.com/);
   assert.equal(profile.verificationSummary?.onboardingPlan.stage, "ops-review");
   assert.ok(
     profile.verificationSummary?.onboardingPlan.steps.some(
@@ -15513,7 +15524,7 @@ test("rejected providers are automatically resubmitted when they update business
   assert.match(resubmittedProvider.verificationSummary?.headline ?? "", /back in review/i);
   assert.match(
     resubmittedProvider.verificationSummary?.summary ?? "",
-    /last review note: add more detail about experience/i
+    /last note from our team: add more detail about experience/i
   );
   assert.equal(resubmittedProvider.verificationSummary?.onboardingPlan.stage, "ready-for-approval");
   assert.match(
@@ -15601,7 +15612,7 @@ test("rejected providers are automatically resubmitted when they fix launch sett
   assert.equal(resubmittedProvider.minimumBookingLeadHours, 24);
   assert.match(
     resubmittedProvider.verificationSummary?.summary ?? "",
-    /last review note: tighten the launch radius/i
+    /last note from our team: tighten the launch radius/i
   );
 });
 

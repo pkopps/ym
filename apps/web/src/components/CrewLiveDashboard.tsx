@@ -17,6 +17,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createAuthenticatedWebApiClient, createWebApiClient } from "../lib/api";
 import { readEvidenceImage } from "../lib/imageUploads";
 import { useStoredWebSession } from "../lib/session";
+import { CrewSiteInstructions } from "./CrewSiteInstructions";
 import { LoadingSkeleton } from "./LoadingSkeleton";
 import { useLaunchFeatureFlags } from "./LaunchFeatureFlagsProvider";
 
@@ -807,6 +808,7 @@ export function CrewLiveDashboard() {
               </div>
 
               <p>{match.summary}</p>
+              <CrewSiteInstructions match={match} />
               {match.status === "cancelled-by-crew" && match.cancellationReason ? (
                 <p className="warning-copy">{match.cancellationReason}</p>
               ) : null}

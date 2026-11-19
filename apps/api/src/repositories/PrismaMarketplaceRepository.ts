@@ -690,7 +690,8 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
                 : null
               : undefined,
           status: updates.status,
-          assignedProviderId: updates.assignedProviderId
+          // Present-but-undefined clears it: a provider removed this person from their crew.
+          assignedProviderId: "assignedProviderId" in updates ? updates.assignedProviderId ?? null : undefined
         }
       });
     });

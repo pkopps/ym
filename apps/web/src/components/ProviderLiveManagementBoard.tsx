@@ -8,6 +8,7 @@ import type { PropertyPhotoArea } from "@yardmatch/contracts";
 
 import { BookingSchedulePanel } from "./BookingSchedulePanel";
 import { ConfirmActionDialog } from "./ConfirmActionDialog";
+import { ProviderCrewPanel } from "./ProviderCrewPanel";
 import { useLaunchFeatureFlags } from "./LaunchFeatureFlagsProvider";
 import { WorkspaceSection } from "./WorkspaceSection";
 
@@ -28,6 +29,7 @@ import {
   ProviderProfile,
   ProviderCalendarSubscriptionResponse,
   ProviderStaffingOverview,
+  ProviderCrewMember,
   ServiceCategory
 } from "@yardmatch/contracts";
 import { addLocalePrefix, I18nInstance } from "@yardmatch/i18n";
@@ -303,6 +305,8 @@ export function ProviderLiveManagementBoard() {
   const { session, sessionReady } = useStoredWebSession();
   const [accessDenied, setAccessDenied] = useState(false);
   const [overview, setOverview] = useState<ProviderStaffingOverview | undefined>();
+  const [crew, setCrew] = useState<ProviderCrewMember[]>([]);
+  const [assignChoice, setAssignChoice] = useState<Record<string, string>>({});
   const [activeBookingId, setActiveBookingId] = useState<string | undefined>();
   const [activeCustomerThread, setActiveCustomerThread] = useState<
     CustomerProviderConversationThread | undefined
@@ -405,13 +409,15 @@ export function ProviderLiveManagementBoard() {
 
     setAccessDenied(false);
     const api = createAuthenticatedWebApiClient();
-    const [nextOverview, nextCalendarSubscription, nextCalendarOverview, nextCalendarImports] = await Promise.all([
+    const [nextOverview, nextCalendarSubscription, nextCalendarOverview, nextCalendarImports, nextCrew] = await Promise.all([
       api.getProviderStaffingOverview(),
       api.getProviderCalendarSubscription(),
       api.getProviderCalendarOverview(),
-      api.getProviderCalendarImports()
+      api.getProviderCalendarImports(),
+      api.getProviderCrew().catch(() => undefined)
     ]);
     setOverview(nextOverview);
+    if (nextCrew) setCrew(nextCrew.crew);
     setCalendarSubscription(nextCalendarSubscription);
     setCalendarOverview(nextCalendarOverview);
     setCalendarImports(nextCalendarImports);
@@ -444,6 +450,22 @@ export function ProviderLiveManagementBoard() {
       await loadProviderView();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_live.error.update_crew_match"));
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function handleAssignCrew(bookingId: string, crewMemberId: string) {
+    const member = crew.find(item => item.crewMemberId === crewMemberId);
+    if (!member) return;
+    setIsWorking(true);
+    setStatusMessage(undefined);
+    setErrorMessage(undefined);
+    try {
+      setOverview(await createAuthenticatedWebApiClient().assignProviderCrewMember({ bookingId, crewMemberId }));
+      setStatusMessage(i18n.t("provider_crew.assigned", { name: member.fullName }));
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_crew.error"));
     } finally {
       setIsWorking(false);
     }
@@ -1111,7 +1133,7 @@ export function ProviderLiveManagementBoard() {
           </div>
           <div className="cta-row">
             {hasCrewDecisionPending(priorityJob) && priorityJobPrimaryAction !== "confirm" ? (
-              <a className="button" href="#provider-jobs">
+              <a className="button" href={`#provider-job-${priorityJob.bookingId}`}>
                 {i18n.t("provider_live.action.review_staffing")}
               </a>
             ) : null}
@@ -1178,9 +1200,10 @@ export function ProviderLiveManagementBoard() {
       )}
 
       <nav className="workspace-nav" aria-label={i18n.t("workspace.destinations")}>
-        <a href="#provider-jobs">{i18n.t("workspace.jobs")}</a><a href="#provider-setup">{i18n.t("workspace.setup")}</a><a href="#provider-pricing">{i18n.t("pricing.title")}</a><a href="#provider-billing">{i18n.t("provider_billing.title")}</a><a href="#provider-settings">{i18n.t("workspace.settings")}</a>
+        <a href="#provider-jobs">{i18n.t("workspace.jobs")}</a><a href="#provider-setup">{i18n.t("workspace.setup")}</a><a href="#provider-pricing">{i18n.t("pricing.title")}</a><a href="#provider-crew">{i18n.t("provider_crew.title")}</a><a href="#provider-billing">{i18n.t("provider_billing.title")}</a><a href="#provider-settings">{i18n.t("workspace.settings")}</a>
       </nav>
       {provider ? <WorkspaceSection id="provider-pricing" title={i18n.t("pricing.title")} defaultOpen={provider.verificationStatus !== "verified"}><ProviderPricingPanel postalCode={provider.address.postalCode} categories={provider.categories} /></WorkspaceSection> : null}
+      {provider ? <WorkspaceSection id="provider-crew" title={i18n.t("provider_crew.title")}><ProviderCrewPanel crew={crew} onChanged={setCrew} /></WorkspaceSection> : null}
       {provider ? <WorkspaceSection id="provider-billing" title={i18n.t("provider_billing.title")}><ProviderBillingPanel /></WorkspaceSection> : null}
       {provider ? <ProviderAvailabilityPanel /> : null}
       {provider ? <ProviderCredentialsPanel provider={provider} onUpdated={updated => setOverview(current => current ? { ...current, provider: updated } : current)} /> : null}
@@ -1229,7 +1252,7 @@ export function ProviderLiveManagementBoard() {
               <p>{i18n.t("provider_live.verification.checklist")}</p>
               <ul className="timeline">
                 {provider.verificationSummary.checklist.map((item) => (
-                  <li key={item.key}>
+                  <li key={`${item.key}-${item.label}`}>
                     <strong>{formatVerificationChecklistStatus(i18n, item.status)}</strong>
                     <span>
                       {item.label} • {item.detail}
@@ -1300,7 +1323,7 @@ export function ProviderLiveManagementBoard() {
       {visibleJobs.length ? (
         <section className="stack-lg" id="provider-jobs">
         {visibleJobs.map((job) => (
-          <article className="history-card" key={job.bookingId}>
+          <article className="history-card" id={`provider-job-${job.bookingId}`} key={job.bookingId}>
             <div className="history-card__header">
               <div>
                 <span className="eyebrow">{(job.services?.length ? job.services.map(item => item.category) : [job.category]).map(category => formatServiceCategoryLabel(i18n, category)).join(" · ")}</span>
@@ -1690,7 +1713,20 @@ export function ProviderLiveManagementBoard() {
             {job.crewGap > 0 ? (
               <div className="list-panel">
                 <strong>{i18n.t("provider_live.job.crew_slots_open", { count: job.crewGap })}</strong>
-                <p>{i18n.t("provider_live.job.staffing_options_warning")}</p>
+                {(() => {
+                  const onJob = new Set(job.matches.filter(match => match.status === "accepted").map(match => match.crewMemberId));
+                  const available = crew.filter(member => !onJob.has(member.crewMemberId));
+                  if (!available.length) return <p>{i18n.t("provider_crew.assign_none")}</p>;
+                  const chosen = assignChoice[job.bookingId] ?? available[0].crewMemberId;
+                  return <div className="cta-row">
+                    <label className="form-field">{i18n.t("provider_crew.assign_label")}
+                      <select value={chosen} onChange={event => setAssignChoice(current => ({ ...current, [job.bookingId]: event.target.value }))}>
+                        {available.map(member => <option key={member.crewMemberId} value={member.crewMemberId}>{member.fullName}</option>)}
+                      </select>
+                    </label>
+                    <button className="button" disabled={isWorking} type="button" onClick={() => void handleAssignCrew(job.bookingId, chosen)}>{i18n.t("provider_crew.assign")}</button>
+                  </div>;
+                })()}
               </div>
             ) : null}
             <details className="service-card-disclosure">

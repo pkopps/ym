@@ -6,6 +6,7 @@ import { useI18n } from "@yardmatch/i18n/react";
 import { useEffect, useMemo, useState } from "react";
 import { createAuthenticatedWebApiClient } from "../lib/api";
 import { useStoredWebSession } from "../lib/session";
+import { CrewSiteInstructions } from "./CrewSiteInstructions";
 import { LoadingSkeleton } from "./LoadingSkeleton";
 
 type ScheduleView = "calendar" | "list";
@@ -222,6 +223,7 @@ export function CrewScheduleBoard() {
                   <h3>{i18n.t("crew_schedule.board.work")}</h3>
                   <p>{(match.serviceCategories?.length ? match.serviceCategories : [match.category]).map(category => category.replaceAll("-", " ")).join(" · ")}</p>
                   <p>{match.summary}</p>
+                  <CrewSiteInstructions match={match} />
                 </div>
                 <div>
                   <h3>{i18n.t("crew_schedule.board.route")}</h3>

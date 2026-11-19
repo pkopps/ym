@@ -135,7 +135,12 @@ export function OpsProviderVerificationQueue() {
                 <h4>Business credentials</h4>
                 {provider.credentials?.map(credential => <div className="list-panel" key={credential.id}>
                   <p>{credential.type.replaceAll("-", " ")}: {credential.status}</p>
-                  <p>{credential.jurisdiction} • {credential.referenceNumber} • Expires: {credential.expiresAt ?? "Not supplied"}</p>
+                  <p>{credential.jurisdiction} • {credential.referenceNumber ?? "No number given"} • Expires: {credential.expiresAt ?? "Not supplied"}</p>
+                  {credential.documentUrl ? (
+                    credential.documentUrl.startsWith("data:")
+                      ? <a href={credential.documentUrl} download={`${credential.type}-${provider.companyName}`}>Download document</a>
+                      : <a href={credential.documentUrl} target="_blank" rel="noopener noreferrer">View document</a>
+                  ) : <p>No document uploaded</p>}
                   {credential.reviewNotes ? <p>{credential.reviewNotes}</p> : null}
                   <label>Credential review reason<textarea value={approvalOverrideNotes[credential.id] ?? ""} onChange={event => setApprovalOverrideNotes(current => ({ ...current, [credential.id]: event.target.value }))} /></label>
                   <div className="cta-row">

@@ -72,6 +72,48 @@ export class PhotoStorageService {
     };
   }
 
+  /**
+   * Stores a provider's credential document. Inline mode keeps the data URL; private mode writes a new object per
+   * upload (a resubmission never overwrites the previous file) and returns a tokened API URL for reviewers.
+   */
+  public async storeCredentialDocument(
+    providerId: string,
+    credentialId: string,
+    originalDataUrl: string,
+    document: { bytes: Buffer; contentType: string }
+  ): Promise<{ deliveryUrl: string }> {
+    if (this.mode === "inline") {
+      return { deliveryUrl: originalDataUrl };
+    }
+    if (!this.blobToken) {
+      throw new Error("Private photo storage is missing BLOB_READ_WRITE_TOKEN");
+    }
+    const version = randomBytes(8).toString("hex");
+    await withAbortableTimeout(
+      (signal) =>
+        put(this.credentialDocumentPathname(providerId, credentialId, version), document.bytes, {
+          access: "private",
+          token: this.blobToken,
+          contentType: document.contentType,
+          addRandomSuffix: false,
+          allowOverwrite: false,
+          maximumSizeInBytes: document.bytes.length,
+          cacheControlMaxAge: 60,
+          abortSignal: signal
+        }),
+      { timeoutMs: this.externalRequestTimeoutMs, timeoutMessage: "Document storage did not respond in time. Try uploading again." }
+    );
+    const token = randomBytes(32).toString("base64url");
+    const base = this.apiBaseUrl.replace(/\/$/, "");
+    return {
+      deliveryUrl: `${base}/api/media/credentials/${encodeURIComponent(providerId)}/${encodeURIComponent(credentialId)}?token=${encodeURIComponent(token)}&v=${version}`
+    };
+  }
+
+  public credentialDocumentPathname(providerId: string, credentialId: string, version: string): string {
+    return `provider-credentials/${providerId}/${credentialId}-${version}`;
+  }
+
   public buildMarketingDeliveryUrl(evidenceId: string): string {
     return `${this.apiBaseUrl.replace(/\/$/, "")}/api/media/marketing/${encodeURIComponent(evidenceId)}`;
   }
