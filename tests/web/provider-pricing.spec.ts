@@ -71,7 +71,9 @@ test("ops admins edit ZIP minimums and can review the recorded reason", async ({
   await expect(panel.getByRole("status")).toHaveText("Prices saved.");
   await expect(panel.getByText("ZIP minimum: $37.50")).toBeVisible();
   await panel.getByText("Price change history", { exact: true }).click();
-  await expect(panel.getByRole("listitem").last()).toContainText("Synthetic local pricing acceptance");
+  // Newest first; 08008 is a launch ZIP, so its launch default sits below this change.
+  await expect(panel.getByRole("listitem").first()).toContainText("Synthetic local pricing acceptance");
+  await expect(panel.getByRole("listitem").last()).toContainText("Launch default");
   for (const [width, height, suffix] of [[1440, 900, "desktop"], [390, 844, "mobile"]] as const) {
     await page.setViewportSize({ width, height }); await panel.scrollIntoViewIfNeeded();
     await page.screenshot({ path: `${evidenceRoot}/zip-pricing-ops-${suffix}.png` });

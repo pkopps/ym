@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { randomUUID } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
+import { launchServiceZipCodes, launchZipMinimumRecords } from "@yardmatch/contracts";
 import { InMemoryMarketplaceRepository } from "../src/repositories/InMemoryMarketplaceRepository";
 import { PrismaMarketplaceRepository } from "../src/repositories/PrismaMarketplaceRepository";
 import { ProviderPricingService } from "../src/services/ProviderPricingService";
@@ -37,6 +38,25 @@ test("Postgres persists service prices and minimum audit history across instance
   } finally {
     await prisma.zipServiceMinimum.deleteMany({ where: { postalCode: zip } });
     await prisma.userAccount.deleteMany({ where: { id: { in: [provider.id, adminId] } } });
+    await prisma.$disconnect();
+  }
+});
+
+test("the launch-ZIP migration matches the shared launch minimums", { skip: !databaseUrl }, async () => {
+  const prisma = new PrismaClient({ datasourceUrl: databaseUrl });
+  try {
+    const repository = new PrismaMarketplaceRepository(prisma);
+    const expected = launchZipMinimumRecords();
+    for (const zip of launchServiceZipCodes) {
+      const rows = await repository.listZipServiceMinimums(zip);
+      for (const want of expected.filter(row => row.postalCode === zip)) {
+        const row = rows.find(item => item.category === want.category);
+        assert.ok(row, `${zip} ${want.category}`);
+        // Ops may have changed a minimum since launch; the launch default is always the first history entry.
+        assert.deepEqual(row.history[0], want.history[0]);
+      }
+    }
+  } finally {
     await prisma.$disconnect();
   }
 });

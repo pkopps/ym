@@ -225,20 +225,21 @@ const providerArticles: HelpArticle[] = [
     id: "provider-payouts-and-disputes",
     audience: "provider",
     slug: "payouts-refunds-and-disputes",
-    title: "Understand payouts, disputes, and support escalations",
+    title: "How you get paid, finder fees, and disputes",
     summary:
-      "Check payout status and get help with refund requests or service concerns.",
-    readTimeMinutes: 4,
-    updatedAt: "2026-09-28",
+      "Customers pay you directly. YardMatch charges a one-time finder fee for each new customer.",
+    readTimeMinutes: 3,
+    updatedAt: "2026-11-18",
     sections: [
       {
-        heading: "Payments and payouts",
+        heading: "Getting paid",
         body:
-          "Customer payments can be authorized up front and captured after completion to protect both sides of the marketplace.",
+          "Customers pay you directly for the work, the way you already take payment. YardMatch doesn't collect or hold job payments.",
         bullets: [
-          "Authorization confirms the customer can pay before dispatch.",
-          "Customer payments are captured after the job is completed.",
-          "Review disputes and refunds with the details of the affected booking."
+          "There is no per-job fee.",
+          "YardMatch charges a one-time finder fee for each new customer, to the card you save under Finder fees, after your first completed job with them.",
+          "The fee depends on lawn size, and your first new customer is free.",
+          "While a dispute on a job is open, no finder fee is charged for it."
         ]
       },
       {
@@ -372,11 +373,11 @@ export const helpCollections: Record<HelpAudience, HelpCollection> = {
     audience: "provider",
     title: "Provider help",
     description:
-      "Guides for your business profile, service area, calendar, payouts, and customer support.",
+      "Guides for your business profile, service area, calendar, finder fees, and customer support.",
     quickLinks: [
       "Profile and service area",
       "Calendar sync and job duration",
-      "Payouts, refunds, and disputes"
+      "Getting paid and finder fees"
     ],
     articles: providerArticles
   },

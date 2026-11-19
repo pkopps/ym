@@ -16,9 +16,12 @@ async function fixture() {
   const provider = (await repository.listProviders())[0]!;
   const customer = await platform.registerUser({ role: "customer", fullName: "Guard Customer", email: `${randomUUID()}@example.invalid`, address: provider.address, propertyLabel: "Home" });
   const other = await platform.registerUser({ role: "customer", fullName: "Other Customer", email: `${randomUUID()}@example.invalid`, address: provider.address, propertyLabel: "Home" });
+  // One clock for the fixture, so two identical submissions carry identical times.
+  const startedAt = Date.now();
+  const at = (hours: number) => new Date(startedAt + hours * 3_600_000).toISOString();
   const book = (owner: typeof customer, startHours: number, extra: { requestId?: string } = {}) => createWorkflowBooking(platform, repository, owner.id, {
     providerId: provider.id, serviceAddress: owner.properties[0]!.address, servicePropertyId: owner.properties[0]!.id, category: "lawn-mowing",
-    scheduledStartIso: future(startHours), scheduledEndIso: future(startHours + 1), notes: "", totalCents: 6_000, ...extra
+    scheduledStartIso: at(startHours), scheduledEndIso: at(startHours + 1), notes: "", totalCents: 6_000, ...extra
   });
   return { repository, platform, provider, customer, other, book };
 }

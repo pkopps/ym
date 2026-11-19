@@ -22,7 +22,7 @@ test.describe("provider card for finder fees", () => {
     await expect(section.getByText("Your first new customer is free.")).toBeVisible();
     await expect(section.getByText("No card saved yet.")).toBeVisible();
     // Local development has no Stripe key, so setup is unavailable rather than broken.
-    await expect(section.getByText("Card setup isn't available. Try again later.")).toBeVisible();
+    await expect(section.getByText("Card setup isn't available right now. Try again in a few minutes, or contact support from Help.")).toBeVisible();
     await expect(section.getByRole("button", { name: "Add card" })).toHaveCount(0);
   });
 
